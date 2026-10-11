@@ -46,6 +46,8 @@ export async function getOverview(weekParam?: string | null) {
     db().from("keyword_changes").select("*").gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString()).order("created_at", { ascending: false }).limit(10),
   ]);
 
+  const weekTotals = await Promise.all(weeks.map((w) => (w === week ? Promise.resolve(cur) : w === prevWeek ? Promise.resolve(prev) : totals(w))));
+  const kpiSeries = weeks.map((w, i) => ({ week: w, ...weekTotals[i] }));
   const active = topics.filter((t) => t.active);
   const summaries = summarize((statRes.data ?? []) as TopicWeekStat[], active.map((t) => t.slug), weeks, week, prevWeek)
     .sort((a, b) => b.mentions - a.mentions);
@@ -74,6 +76,7 @@ export async function getOverview(weekParam?: string | null) {
     digest: (digestRes.data ?? null) as Digest | null,
     themes: (themeRes.data ?? []) as PainTheme[],
     sources,
+    kpiSeries,
     lastRun: runRes.data?.[0] ?? null,
     pending: pendingRes.count ?? 0,
     changes: (changesRes.data ?? []) as { topic_slug: string; keyword: string; action: string; reason: string; created_at: string }[],
@@ -154,10 +157,73 @@ export async function getTopicDetail(slug: string, weekParam?: string | null, kw
     sources: [...bySource.entries()].map(([source, mentions]) => ({ source, mentions })).sort((a, b) => b.mentions - a.mentions),
     themes: (themes ?? []) as PainTheme[],
     topPainPoints: [...painCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([text, n]) => ({ text, n })),
-    posts: [...cur].sort((a, b) => Number(!!b.is_pain) - Number(!!a.is_pain) || eng(b) - eng(a)).slice(0, 60),
+    posts: [...cur].sort((a, b) => Number(!!b.is_pain) - Number(!!a.is_pain) || eng(b) - eng(a)).slice(0, 400),
     deepDive: cached?.content ?? null,
   };
 }
 
 export type TopicDetail = NonNullable<Awaited<ReturnType<typeof getTopicDetail>>>;
 export type { TopicSummary };
+
+
+/** Per-community volumes for the Sources page, plus the latest collection result per source. */
+export async function getSourcesPage(weekParam?: string | null) {
+  const week = await resolveWeek(weekParam);
+  const prevWeek = addWeeks(week, -1);
+  const since = addWeeks(week, -7);
+  const weeks = Array.from({ length: 8 }, (_, i) => addWeeks(since, i));
+  const [{ data: rows }, { data: srcs }, { data: runs }] = await Promise.all([
+    db().rpc("source_weekly_stats", { p_since: since }),
+    db().from("sources").select("*").order("id"),
+    db().from("runs").select("started_at, ok, stats, error").eq("stage", "collect").order("started_at", { ascending: false }).limit(1),
+  ]);
+  const r = (rows ?? []) as { week_start: string; source: string; mentions: number; pain: number }[];
+  const lastCollect = runs?.[0] ?? null;
+  const perSource = ((lastCollect?.stats as { perSource?: Record<string, { fetched: number; kept: number; error?: string }> } | null)?.perSource) ?? {};
+  const ids = [...new Set(r.map((x) => x.source))];
+  const series = weeks.map((w) => ({ week: w, ...Object.fromEntries(ids.map((id) => [id, Number(r.find((x) => x.source === id && x.week_start === w)?.mentions ?? 0)])) }));
+  const stat = (id: string, w: string) => r.find((x) => x.source === id && x.week_start === w);
+  const bySource = ids.map((id) => {
+    const c = stat(id, week), p = stat(id, prevWeek);
+    return {
+      id, mentions: Number(c?.mentions ?? 0), prev: Number(p?.mentions ?? 0), pain: Number(c?.pain ?? 0),
+      deltaPct: delta(Number(c?.mentions ?? 0), Number(p?.mentions ?? 0)),
+      painPct: pct(Number(c?.pain ?? 0), Number(c?.mentions ?? 0)),
+      spark: weeks.map((w) => Number(stat(id, w)?.mentions ?? 0)),
+    };
+  }).sort((a, b) => b.mentions - a.mentions);
+  return { week, prevWeek, weeks, series, ids, bySource, sources: (srcs ?? []) as { id: string; name: string; enabled: boolean }[], perSource, lastCollect };
+}
+
+/** Pain themes with 8-week history (theme names are reused week to week) and the raw phrases behind them. */
+export async function getPainPage(weekParam?: string | null) {
+  const week = await resolveWeek(weekParam);
+  const since = addWeeks(week, -7);
+  const weeks = Array.from({ length: 8 }, (_, i) => addWeeks(since, i));
+  const [topics, { data: themeRows }, phrases] = await Promise.all([
+    getTopics(),
+    db().from("pain_themes").select("*").gte("week_start", since).lte("week_start", week),
+    fetchAll<{ pain_point: string; topic_slugs: string[]; unresolved: boolean | null; severity: number | null }>((from, to) =>
+      db().from("posts").select("pain_point, topic_slugs, unresolved, severity").eq("week_start", week).eq("is_pain", true)
+        .not("pain_point", "is", null).or("relevant.is.null,relevant.eq.true").range(from, to)),
+  ]);
+  const all = (themeRows ?? []) as PainTheme[];
+  const current = all.filter((t) => t.week_start === week).sort((a, b) => b.mentions - a.mentions).map((t) => ({
+    ...t,
+    history: weeks.map((w) => {
+      const h = all.find((x) => x.week_start === w && x.theme.toLowerCase() === t.theme.toLowerCase());
+      return w === addWeeks(week, -1) && !h ? t.prev_mentions : h?.mentions ?? 0;
+    }),
+  }));
+  const map = new Map<string, { n: number; unresolved: number; severe: number; topics: Map<string, number> }>();
+  for (const p of phrases) {
+    const g = map.get(p.pain_point) ?? { n: 0, unresolved: 0, severe: 0, topics: new Map() };
+    g.n++; if (p.unresolved) g.unresolved++; if ((p.severity ?? 0) >= 3) g.severe++;
+    for (const t of p.topic_slugs) g.topics.set(t, (g.topics.get(t) ?? 0) + 1);
+    map.set(p.pain_point, g);
+  }
+  const phraseRows = [...map.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 25).map(([text, g]) => ({
+    text, n: g.n, unresolved: g.unresolved, severe: g.severe, topic: [...g.topics.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
+  }));
+  return { week, weeks, topics, themes: current, phrases: phraseRows, totalPain: phrases.length };
+}

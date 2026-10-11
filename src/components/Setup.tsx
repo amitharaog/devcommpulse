@@ -27,9 +27,11 @@ export function Setup({ reason, detail, lastRun }: { reason: Reason; detail?: st
   };
   const s = steps[reason];
   return (
-    <div className="mx-auto max-w-[62ch] py-16">
-      <h1 className="font-display text-4xl font-bold tracking-tight">{s.title}</h1>
-      <p className="mt-4 text-[17px] leading-relaxed">{s.body}</p>
-    </div>
+    <main className="mx-auto max-w-[720px] px-5 py-16">
+      <div className="card p-8">
+        <h1 className="font-display text-[28px] font-bold tracking-tight">{s.title}</h1>
+        <p className="mt-3 text-[16px] leading-relaxed">{s.body}</p>
+      </div>
+    </main>
   );
 }

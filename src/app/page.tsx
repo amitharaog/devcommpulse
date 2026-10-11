@@ -2,17 +2,20 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { isConfigured } from "@/lib/supabase";
 import { getOverview, weekOptions, type Overview } from "@/lib/data";
-import { weekLabel, currentWeek } from "@/lib/week";
+import { weekLabel } from "@/lib/week";
 import { sourceLabel } from "@/lib/labels";
-import { CompareBar, Delta, Mood, Sparkline, Stat, timeAgo } from "@/components/bits";
-import { SourceBars, TrendLines } from "@/components/Charts";
+import { Delta } from "@/components/bits";
+import { Donut, TrendLines, SERIES } from "@/components/Charts";
 import { WeekPicker } from "@/components/WeekPicker";
-import { AskBox } from "@/components/AskBox";
 import { Setup } from "@/components/Setup";
+import { Card, Kpi, Page, PageHeader, Badge, Empty, Freshness } from "@/components/ui";
+import { ThemesTable } from "@/components/ThemesTable";
+import { TopicsTable } from "@/components/TopicsTable";
+import { topicRows, weekLabels } from "@/lib/view";
 
 export const dynamic = "force-dynamic";
 
-export default async function BriefPage({ searchParams }: { searchParams: Promise<{ week?: string }> }) {
+export default async function OverviewPage({ searchParams }: { searchParams: Promise<{ week?: string }> }) {
   if (!isConfigured()) return <Setup reason="env" />;
   const { week: weekParam } = await searchParams;
   let o: Overview;
@@ -22,168 +25,124 @@ export default async function BriefPage({ searchParams }: { searchParams: Promis
     return <Setup reason="schema" detail={(e as Error).message} />;
   }
   if (!o.topics.length) return <Setup reason="topics" />;
+  if (o.totals.total === 0 && o.summaries.every((s) => s.prev === 0)) return <Setup reason="data" lastRun={o.lastRun} />;
 
   const names = Object.fromEntries(o.topics.map((t) => [t.slug, t.name]));
-  const labels = Object.fromEntries(weekOptions().map((w) => [w, weekLabel(w) + (w === currentWeek() ? " (so far)" : "")]));
-  const maxMentions = Math.max(1, ...o.summaries.flatMap((s) => [s.mentions, s.prev]));
   const fallback = fallbackBrief(o, names);
   const headline = o.digest?.headline ?? fallback.headline;
   const bullets = o.digest?.bullets?.length ? o.digest.bullets : fallback.bullets;
   const top5 = o.summaries.slice(0, 5).map((s) => s.slug);
   const trend = o.weeks.map((w) => ({ week: w, ...Object.fromEntries(o.summaries.filter((s) => top5.includes(s.slug)).map((s) => [s.slug, s.series.find((x) => x.week === w)?.mentions ?? 0])) }));
+  const k = o.kpiSeries;
+  const rising = o.summaries.filter((s) => s.mentions >= 3 && (s.deltaPct === null || s.deltaPct > 0)).sort((a, b) => (b.deltaPct ?? 999) - (a.deltaPct ?? 999)).slice(0, 4);
+  const easing = o.summaries.filter((s) => s.prev >= 3 && (s.deltaPct ?? 0) < 0).sort((a, b) => (a.deltaPct ?? 0) - (b.deltaPct ?? 0)).slice(0, 3);
   const q = (slug: string) => `/topic/${slug}?week=${o.week}`;
-
-  if (o.totals.total === 0 && o.summaries.every((s) => s.prev === 0)) return <Setup reason="data" lastRun={o.lastRun} />;
+  const pctOf = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
 
   return (
-    <div className="space-y-12">
-      {/* The brief */}
-      <section>
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <p className="text-[15px] text-muted">
-            Brief for {weekLabel(o.week)}
-            {o.isCurrent ? ", week still in progress" : ""}
-            {o.digest ? `, written ${timeAgo(o.digest.generated_at)}` : ""}
-          </p>
-          <div className="ml-auto">
-            <Suspense><WeekPicker week={o.week} options={weekOptions()} labels={labels} /></Suspense>
-          </div>
+    <>
+      <PageHeader
+        title="Overview"
+        subtitle={<>Week of {weekLabel(o.week)}{o.isCurrent ? " (in progress)" : ""}, compared with {weekLabel(o.prevWeek)}</>}
+        actions={<>
+          <Freshness iso={o.digest?.generated_at ?? o.lastRun?.started_at} label={o.digest ? "Brief written" : "Data updated"} />
+          <Suspense><WeekPicker week={o.week} options={weekOptions()} labels={weekLabels()} /></Suspense>
+        </>}
+      />
+      <Page>
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+          <Kpi label="Posts in our problem space" value={o.totals.total} spark={k.map((x) => x.total)}
+            delta={<Delta pct={o.totals.deltaPct} prev={o.totals.prev} cur={o.totals.total} />} foot={<span>vs {o.totals.prev} last week</span>} />
+          <Kpi label="Describe a pain point" value={o.totals.painPct ?? "—"} unit={o.totals.painPct === null ? undefined : "%"} tone="bad"
+            spark={k.map((x) => pctOf(x.pain, x.analyzed))} foot={<span>{o.totals.pain} posts</span>} />
+          <Kpi label="Negative in tone" value={o.totals.negativePct ?? "—"} unit={o.totals.negativePct === null ? undefined : "%"} tone="bad"
+            spark={k.map((x) => pctOf(x.negative, x.analyzed))} foot={o.totals.prevNegativePct !== null ? <span>{o.totals.prevNegativePct}% last week</span> : undefined} />
+          <Kpi label="Still unresolved" value={o.totals.unresolvedPct ?? "—"} unit={o.totals.unresolvedPct === null ? undefined : "%"} tone="bad"
+            spark={k.map((x) => pctOf(x.unresolved, x.analyzed))} foot={<span>{o.totals.unresolved} posts with no fix in sight</span>} />
         </div>
-        <h1 className="reveal max-w-[24ch] font-display text-[clamp(30px,4.6vw,50px)] font-bold leading-[1.06] tracking-[-0.02em]">{headline}</h1>
-        <ul className="mt-6 max-w-[70ch] space-y-2.5 text-[17px] leading-relaxed">
-          {bullets.map((b, i) => (
-            <li key={i} className="flex gap-3"><span aria-hidden className="mt-[11px] h-[3px] w-3 shrink-0 bg-rise" />{b}</li>
-          ))}
-        </ul>
-        {o.digest?.watch && (
-          <p className="mt-5 max-w-[70ch] rounded-md bg-surface px-4 py-3 text-[15px] ring-1 ring-line">
-            <span className="font-semibold">For Monday&apos;s sprint planning: </span>{o.digest.watch}
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Card className="lg:col-span-2" title="This week's brief" action={<Badge tone="cobalt">{o.digest ? "Written by Gemini" : "Computed from counts"}</Badge>}>
+            <p className="reveal max-w-[60ch] font-display text-[23px] font-bold leading-snug tracking-[-0.01em]">{headline}</p>
+            <ul className="mt-4 space-y-2.5 text-[15px] leading-relaxed">
+              {bullets.map((b, i) => <li key={i} className="flex gap-3"><span aria-hidden className="mt-[10px] h-1.5 w-1.5 shrink-0 rounded-full bg-rise" />{b}</li>)}
+            </ul>
+            {o.digest?.watch && (
+              <div className="mt-5 rounded-lg bg-cobalt-soft px-4 py-3 text-[14.5px]">
+                <span className="font-semibold">For Monday&apos;s sprint planning: </span>{o.digest.watch}
+              </div>
+            )}
+            {!o.digest && <p className="mt-4 text-[13px] text-muted">The AI brief for this week isn&apos;t written yet. It runs Friday morning, or <Link href="/settings" className="text-cobalt underline">run it now</Link>.</p>}
+          </Card>
+
+          <Card title="Biggest movers" subtitle="Change in posts vs last week">
+            <h3 className="mb-2 text-[12.5px] font-medium text-muted">Rising</h3>
+            {rising.length ? (
+              <ul className="space-y-2">
+                {rising.map((s) => (
+                  <li key={s.slug} className="flex items-center gap-3 text-[14px]">
+                    <Link href={q(s.slug)} className="min-w-0 flex-1 leading-snug hover:text-cobalt hover:underline">{names[s.slug]}</Link>
+                    <span className="num text-[14px] font-bold">{s.mentions}</span>
+                    <span className="w-16 text-right"><Delta pct={s.deltaPct} /></span>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="text-[13px] text-muted">Nothing rising this week.</p>}
+            <h3 className="mb-2 mt-5 text-[12.5px] font-medium text-muted">Easing</h3>
+            {easing.length ? (
+              <ul className="space-y-2">
+                {easing.map((s) => (
+                  <li key={s.slug} className="flex items-center gap-3 text-[14px]">
+                    <Link href={q(s.slug)} className="min-w-0 flex-1 leading-snug hover:text-cobalt hover:underline">{names[s.slug]}</Link>
+                    <span className="num text-[14px] font-bold">{s.mentions}</span>
+                    <span className="w-16 text-right"><Delta pct={s.deltaPct} /></span>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="text-[13px] text-muted">Nothing easing this week.</p>}
+          </Card>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Card className="lg:col-span-2" title="Posts per week" subtitle="Five busiest topics over eight weeks" action={<Link href={`/topics?week=${o.week}`} className="text-cobalt hover:underline">All topics</Link>}>
+            <TrendLines data={trend} keys={top5} names={names} />
+          </Card>
+          <Card title="Where it's discussed" subtitle="Share of this week's posts" action={<Link href={`/sources?week=${o.week}`} className="text-cobalt hover:underline">Sources</Link>}>
+            {o.sources.some((s) => s.mentions) ? (
+              <>
+                <Donut data={o.sources.filter((s) => s.mentions).map((s) => ({ name: sourceLabel(s.source), value: s.mentions }))} />
+                <ul className="mt-3 space-y-1.5 text-[13.5px]">
+                  {o.sources.filter((s) => s.mentions).map((s, i) => (
+                    <li key={s.source} className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-sm" style={{ background: SERIES[i % SERIES.length] }} aria-hidden />
+                      <span className="flex-1">{sourceLabel(s.source)}</span>
+                      <span className="num font-bold">{s.mentions}</span>
+                      <span className="w-14 text-right"><Delta pct={s.prev ? Math.round(((s.mentions - s.prev) / s.prev) * 100) : null} /></span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : <Empty>No posts this week yet.</Empty>}
+          </Card>
+        </div>
+
+        <Card flush title="Top pain points" subtitle="Similar complaints grouped into themes by Gemini" action={<Link href={`/pain-points?week=${o.week}`} className="text-cobalt hover:underline">View all {o.themes.length}</Link>}>
+          {o.themes.length ? <ThemesTable themes={o.themes.slice(0, 6)} names={names} week={o.week} />
+            : <div className="px-5 pb-5"><Empty>Themes appear once the weekly brief has run for this week.</Empty></div>}
+        </Card>
+
+        <Card flush title="Topics at a glance" subtitle="Bar shows this week; the tick marks last week. Click a column to sort." action={<Link href={`/topics?week=${o.week}`} className="text-cobalt hover:underline">Open topics</Link>}>
+          <TopicsTable rows={topicRows(o)} week={o.week} compact />
+        </Card>
+
+        {(o.pending > 0 || o.changes.length > 0) && (
+          <p className="text-[13px] text-muted">
+            {o.pending > 0 && <>{o.pending} posts are waiting for AI analysis. </>}
+            {o.changes.length > 0 && <>Recently added by AI: {o.changes.slice(0, 4).map((c) => `“${c.keyword}”`).join(", ")}. <Link href="/settings" className="text-cobalt underline">Review</Link></>}
           </p>
         )}
-        {!o.digest && (
-          <p className="mt-5 text-sm text-muted">
-            The AI-written brief for this week isn&apos;t ready yet, so these lines are computed from the counts. It&apos;s written every Friday morning, or{" "}
-            <Link href="/settings" className="text-cobalt underline">run it now</Link>.
-          </p>
-        )}
-      </section>
-
-      {/* Numbers */}
-      <section className="grid grid-cols-2 gap-6 border-y border-line py-6 md:grid-cols-4">
-        <Stat value={o.totals.total} label="posts about our problem space" sub={<><Delta pct={o.totals.deltaPct} prev={o.totals.prev} cur={o.totals.total} /> <span className="text-muted">vs {o.totals.prev}</span></>} />
-        <Stat value={o.totals.painPct === null ? "—" : `${o.totals.painPct}%`} label="describe a real pain point" />
-        <Stat value={o.totals.negativePct === null ? "—" : `${o.totals.negativePct}%`} label="negative in tone" sub={o.totals.prevNegativePct !== null && o.totals.negativePct !== null ? <span className="text-muted">{o.totals.prevNegativePct}% last week</span> : undefined} />
-        <Stat value={o.totals.unresolvedPct === null ? "—" : `${o.totals.unresolvedPct}%`} label="still unresolved" />
-      </section>
-
-      {/* Topic board */}
-      <section>
-        <div className="mb-3 flex items-baseline gap-3">
-          <h2 className="font-display text-2xl font-bold">Topics</h2>
-          <p className="text-sm text-muted">Bar is this week, tick is last week. Select a topic for charts, posts and a deep dive.</p>
-        </div>
-        <div className="panel overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left">
-            <thead className="border-b border-line text-sm text-muted">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Topic</th>
-                <th className="w-[30%] px-4 py-2.5 font-medium">Posts</th>
-                <th className="px-4 py-2.5 font-medium">Change</th>
-                <th className="px-4 py-2.5 font-medium">8 weeks</th>
-                <th className="px-4 py-2.5 font-medium">Mood</th>
-                <th className="px-4 py-2.5 font-medium">Unresolved</th>
-              </tr>
-            </thead>
-            <tbody>
-              {o.summaries.map((s) => {
-                const t = o.topics.find((x) => x.slug === s.slug)!;
-                return (
-                  <tr key={s.slug} className="group border-b border-line last:border-0 hover:bg-paper/60">
-                    <td className="px-4 py-3">
-                      <Link href={q(s.slug)} className="font-semibold group-hover:text-cobalt group-hover:underline">{t.name}</Link>
-                      {t.origin === "ai" && <span className="ml-2 rounded bg-amber-soft px-1.5 py-0.5 text-xs text-amber">added by AI</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <span className="num w-9 text-right text-lg font-bold">{s.mentions}</span>
-                        <CompareBar cur={s.mentions} prev={s.prev} max={maxMentions} />
-                      </div>
-                    </td>
-                    <td className="px-4 py-3"><Delta pct={s.deltaPct} prev={s.prev} cur={s.mentions} /></td>
-                    <td className="px-4 py-3"><Sparkline values={s.series.map((x) => x.mentions)} /></td>
-                    <td className="px-4 py-3"><Mood value={s.avgSentiment} /></td>
-                    <td className="px-4 py-3 text-sm">{s.unresolvedPct === null ? "—" : `${s.unresolvedPct}%`}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* Pain themes + sources */}
-      <section className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
-        <div>
-          <h2 className="font-display text-2xl font-bold">Recurring pain points</h2>
-          <p className="mb-4 text-sm text-muted">Similar complaints grouped into one theme. Count is posts this week.</p>
-          {o.themes.length === 0 ? (
-            <p className="panel p-4 text-sm text-muted">Themes appear once the weekly brief has run for this week.</p>
-          ) : (
-            <ol className="panel divide-y divide-line">
-              {o.themes.slice(0, 10).map((t) => (
-                <li key={t.theme} className="flex gap-4 px-4 py-3">
-                  <span className="num w-8 shrink-0 text-right text-xl font-bold">{t.mentions}</span>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                      {t.topic_slug ? (
-                        <Link href={q(t.topic_slug)} className="font-semibold hover:text-cobalt hover:underline">{t.theme}</Link>
-                      ) : <span className="font-semibold">{t.theme}</span>}
-                      <Delta pct={t.prev_mentions === 0 ? (t.mentions ? null : 0) : Math.round(((t.mentions - t.prev_mentions) / t.prev_mentions) * 100)} prev={t.prev_mentions} />
-                      {t.underserved && <span className="rounded bg-amber-soft px-1.5 py-0.5 text-xs font-medium text-amber">underserved</span>}
-                    </div>
-                    {t.summary && <p className="mt-0.5 text-sm text-muted">{t.summary}</p>}
-                    <p className="mt-0.5 text-xs text-muted">{t.unresolved} unresolved, {t.prev_mentions} last week</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
-        <div>
-          <h2 className="font-display text-2xl font-bold">Where it&apos;s said</h2>
-          <p className="mb-4 text-sm text-muted">Matched posts per community.</p>
-          <div className="panel p-3">
-            <SourceBars data={o.sources.map((s) => ({ name: sourceLabel(s.source), thisWeek: s.mentions, lastWeek: s.prev }))} />
-          </div>
-        </div>
-      </section>
-
-      {/* Trend */}
-      <section>
-        <h2 className="font-display text-2xl font-bold">Eight-week trend</h2>
-        <p className="mb-4 text-sm text-muted">Posts per week for the five busiest topics.</p>
-        <div className="panel p-4"><TrendLines data={trend} keys={top5} names={names} /></div>
-      </section>
-
-      {/* Ask */}
-      <section>
-        <h2 className="font-display text-2xl font-bold">Ask this week&apos;s data</h2>
-        <p className="mb-4 text-sm text-muted">Gemini answers from the stored posts only and links its sources.</p>
-        <AskBox week={o.week} suggestions={["What are teams saying about false positives?", "Which complaints have no good tool today?", "What objections might come up in demos?"]} />
-      </section>
-
-      <footer className="flex flex-wrap gap-x-6 gap-y-1 border-t border-line pt-5 text-sm text-muted">
-        {o.lastRun && <span>Last pipeline run: {o.lastRun.stage}, {timeAgo(o.lastRun.started_at)}{o.lastRun.ok === false ? " (failed)" : ""}</span>}
-        {o.pending > 0 && <span>{o.pending} posts waiting for AI analysis</span>}
-        {o.changes.length > 0 && (
-          <span>
-            Recently added by AI:{" "}
-            {o.changes.slice(0, 4).map((c) => `“${c.keyword}”`).join(", ")}{" "}
-            <Link href="/settings" className="text-cobalt underline">review</Link>
-          </span>
-        )}
-      </footer>
-    </div>
+      </Page>
+    </>
   );
 }
 

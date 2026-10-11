@@ -16,6 +16,7 @@ export function SettingsClient(props: {
   const [key, setKey] = useState("");
   const [unlocked, setUnlocked] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [tab, setTab] = useState<"topics" | "sources" | "pipeline" | "changes">("topics");
 
   useEffect(() => {
     const k = sessionStorage.getItem("dcp-admin");
@@ -39,7 +40,7 @@ export function SettingsClient(props: {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-6">
       <section className="panel flex flex-wrap items-center gap-3 p-4">
         {unlocked ? (
           <>
@@ -57,19 +58,26 @@ export function SettingsClient(props: {
         )}
       </section>
 
-      <RunPanel api={api} unlocked={unlocked} weeks={props.weeks} postCount={props.postCount} runs={props.runs} model={props.geminiModel} onDone={() => router.refresh()} />
+      <div className="flex gap-1 border-b border-line" role="tablist">
+        {([["topics", `Topics (${props.topics.length})`], ["sources", "Communities"], ["pipeline", "Run pipeline"], ["changes", `AI changes (${props.changes.length})`]] as const).map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+            className={`-mb-px border-b-2 px-3 py-2.5 text-[14px] ${tab === k ? "border-cobalt font-medium" : "border-transparent text-muted hover:text-ink"}`}>{label}</button>
+        ))}
+      </div>
 
-      <section>
-        <h2 className="font-display text-2xl font-bold">Monitored topics</h2>
+      {tab === "pipeline" && <RunPanel api={api} unlocked={unlocked} weeks={props.weeks} postCount={props.postCount} runs={props.runs} model={props.geminiModel} onDone={() => router.refresh()} />}
+
+      {tab === "topics" && <section>
+        <h2 className="text-[17px] font-semibold">Monitored topics</h2>
         <p className="mb-4 text-sm text-muted">Keywords are matched as whole words in titles and text, case-insensitive, plural-tolerant. Stack Overflow tags pull every question with that tag.</p>
         <div className="space-y-3">
           {props.topics.map((t) => <TopicEditor key={t.slug} topic={t} api={api} unlocked={unlocked} onSaved={() => router.refresh()} />)}
           <TopicEditor api={api} unlocked={unlocked} onSaved={() => router.refresh()} />
         </div>
-      </section>
+      </section>}
 
-      <section>
-        <h2 className="font-display text-2xl font-bold">Added automatically</h2>
+      {tab === "changes" && <section>
+        <h2 className="text-[17px] font-semibold">Added automatically</h2>
         <p className="mb-3 text-sm text-muted">Keywords and topics the Friday brief added after seeing them in posts. Remove any you don&apos;t want from the topic above.</p>
         {props.changes.length ? (
           <ul className="panel divide-y divide-line text-[15px]">
@@ -83,15 +91,15 @@ export function SettingsClient(props: {
             ))}
           </ul>
         ) : <p className="panel p-4 text-sm text-muted">Nothing yet. The first Friday brief may suggest additions.</p>}
-      </section>
+      </section>}
 
-      <section>
-        <h2 className="font-display text-2xl font-bold">Communities</h2>
+      {tab === "sources" && <section>
+        <h2 className="text-[17px] font-semibold">Communities</h2>
         <p className="mb-4 text-sm text-muted">Turn a community off, or change its settings (subreddits, DEV tags, Stack Exchange sites) as JSON.</p>
         <div className="space-y-3">
           {props.sources.map((s) => <SourceEditor key={s.id} source={s} api={api} unlocked={unlocked} onSaved={() => router.refresh()} />)}
         </div>
-      </section>
+      </section>}
     </div>
   );
 }
@@ -143,13 +151,13 @@ function RunPanel({ api, unlocked, weeks, postCount, runs, model, onDone }: { ap
 
   return (
     <section>
-      <h2 className="font-display text-2xl font-bold">Run the pipeline</h2>
+      <h2 className="text-[17px] font-semibold">Run the pipeline</h2>
       <p className="mb-4 max-w-[75ch] text-sm text-muted">
         Runs automatically: collection and analysis every night, and the brief every Friday at 06:00 IST (00:30 UTC). {postCount.toLocaleString()} posts stored. AI model: {model}.
         {postCount === 0 && " The first collection backfills 21 days."}
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <button disabled={!unlocked || busy} onClick={() => run(["collect", "analyze", "digest"])} className="rounded-md bg-ink px-4 py-2 text-sm font-medium text-white disabled:opacity-40">Run full pipeline</button>
+        <button disabled={!unlocked || busy} onClick={() => run(["collect", "analyze", "digest"])} className="rounded-md bg-cobalt px-4 py-2 text-sm font-medium text-white disabled:opacity-40">Run full pipeline</button>
         <button disabled={!unlocked || busy} onClick={() => run(["collect"])} className="rounded-md border border-line bg-surface px-3 py-2 text-sm disabled:opacity-40">Collect only</button>
         <button disabled={!unlocked || busy} onClick={() => run(["analyze"])} className="rounded-md border border-line bg-surface px-3 py-2 text-sm disabled:opacity-40">Analyse only</button>
         <button disabled={!unlocked || busy} onClick={() => run(["digest"])} className="rounded-md border border-line bg-surface px-3 py-2 text-sm disabled:opacity-40">Write brief only</button>

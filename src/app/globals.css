@@ -1,16 +1,22 @@
 @import "tailwindcss";
 
 @theme {
-  --color-paper: #eef1f5;
+  --color-paper: #f3f5f9;
   --color-surface: #ffffff;
-  --color-ink: #172033;
-  --color-muted: #5d6880;
-  --color-line: #d6dce6;
-  --color-rise: #c8364f;
-  --color-ease: #1f8a7a;
-  --color-cobalt: #2b50d6;
-  --color-amber: #b7791f;
-  --color-amber-soft: #fbefd8;
+  --color-ink: #18223a;
+  --color-muted: #5f6b82;
+  --color-faint: #8a94a8;
+  --color-line: #e2e7ef;
+  --color-side: #16203a;
+  --color-side-2: #222e4d;
+  --color-rise: #d23f57;
+  --color-rise-soft: #fdecef;
+  --color-ease: #1a8c7d;
+  --color-ease-soft: #e5f5f2;
+  --color-cobalt: #3456f0;
+  --color-cobalt-soft: #edf1ff;
+  --color-amber: #a8670f;
+  --color-amber-soft: #fdf2dc;
   --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --font-sans: "Public Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
@@ -19,11 +25,16 @@ html { background: var(--color-paper); color: var(--color-ink); }
 body { font-family: var(--font-sans); font-feature-settings: "tnum" 1; -webkit-font-smoothing: antialiased; }
 ::selection { background: #c9d4ff; }
 a { text-underline-offset: 3px; }
-:focus-visible { outline: 2px solid var(--color-cobalt); outline-offset: 2px; border-radius: 4px; }
+:focus-visible { outline: 2px solid var(--color-cobalt); outline-offset: 2px; border-radius: 6px; }
 
 .num { font-family: var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
-.panel { background: var(--color-surface); border: 1px solid var(--color-line); border-radius: 10px; }
+.card { background: var(--color-surface); border: 1px solid var(--color-line); border-radius: 12px; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); }
+.panel { background: var(--color-surface); border: 1px solid var(--color-line); border-radius: 12px; }
+.tbl th { font-weight: 500; color: var(--color-muted); font-size: 12.5px; text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--color-line); background: #fafbfd; white-space: nowrap; }
+.tbl td { padding: 11px 16px; border-bottom: 1px solid var(--color-line); vertical-align: middle; }
+.tbl tbody tr:last-child td { border-bottom: 0; }
+.tbl tbody tr:hover td { background: #f8f9fc; }
 
-@keyframes reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.reveal { animation: reveal 600ms cubic-bezier(.2,.7,.2,1) both; }
+@keyframes reveal { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.reveal { animation: reveal 500ms cubic-bezier(.2,.7,.2,1) both; }
 @media (prefers-reduced-motion: reduce) { .reveal { animation: none; } }

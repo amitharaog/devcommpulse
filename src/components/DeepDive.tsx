@@ -27,14 +27,14 @@ export function DeepDive({ topic, week, keyword, initial }: { topic: string; wee
   }
 
   return (
-    <section className="panel p-5">
+    <section>
       <div className="flex flex-wrap items-center gap-3">
         <div>
-          <h2 className="font-display text-xl font-bold">Deep dive</h2>
+          <h2 className="text-[15px] font-semibold">AI deep dive</h2>
           <p className="text-sm text-muted">Root causes, tool gaps and product angles, written by Gemini from this week&apos;s posts{keyword ? ` mentioning “${keyword}”` : ""}.</p>
         </div>
         <div className="ml-auto flex gap-2">
-          {!open && <button onClick={() => run()} className="rounded-md bg-ink px-4 py-2 text-sm font-medium text-white">{dive ? "Show deep dive" : "Run deep dive"}</button>}
+          {!open && <button onClick={() => run()} className="rounded-md bg-cobalt px-4 py-2 text-sm font-medium text-white">{dive ? "Show deep dive" : "Run deep dive"}</button>}
           {open && dive && <button onClick={() => run(true)} disabled={busy} className="rounded-md border border-line px-3 py-2 text-sm">Refresh</button>}
           {open && <button onClick={() => setOpen(false)} className="rounded-md border border-line px-3 py-2 text-sm">Hide</button>}
         </div>
@@ -44,7 +44,7 @@ export function DeepDive({ topic, week, keyword, initial }: { topic: string; wee
       {open && err && <p className="mt-4 text-sm text-rise">{err}</p>}
       {open && dive && !busy && (
         <div className="reveal mt-5 grid gap-6 md:grid-cols-2">
-          <p className="font-display text-lg leading-snug md:col-span-2">{dive.tldr}</p>
+          <p className="rounded-lg bg-cobalt-soft px-4 py-3 font-display text-[18px] leading-snug md:col-span-2">{dive.tldr}</p>
           <Block title="What's happening" items={dive.whats_happening} />
           <Block title="Root causes" items={dive.root_causes} />
           <Block title="Where existing tools fall short" items={dive.tool_gaps} />

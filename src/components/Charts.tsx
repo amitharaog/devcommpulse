@@ -1,11 +1,11 @@
 "use client";
 
 import {
-  Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
-const INK = "#172033", MUTED = "#5d6880", LINE = "#d6dce6", GHOST = "#b4bdcb", RISE = "#c8364f", EASE = "#1f8a7a";
-export const SERIES = ["#2b50d6", "#c8364f", "#1f8a7a", "#b7791f", "#7a4fd1", "#4b5563"];
+const INK = "#18223a", MUTED = "#5f6b82", LINE = "#e2e7ef", GHOST = "#b8c1d1", RISE = "#d23f57", EASE = "#1a8c7d";
+export const SERIES = ["#3456f0", "#d23f57", "#1a8c7d", "#c58a1b", "#7a4fd1", "#5f6b82", "#0e9ac2"];
 
 const axis = { stroke: MUTED, fontSize: 12, tickLine: false, axisLine: false } as const;
 const tip = { contentStyle: { borderRadius: 8, border: `1px solid ${LINE}`, fontSize: 13 }, cursor: { fill: "rgba(23,32,51,0.04)" } } as const;
@@ -21,9 +21,9 @@ function trim<T>(rows: T[], has: (r: T) => boolean): T[] {
 const fmtWeek = (w: string) => new Date(w + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
 /** Mentions per topic over eight weeks (top topics only, so it stays readable). */
-export function TrendLines({ data, keys, names }: { data: Record<string, number | string>[]; keys: string[]; names: Record<string, string> }) {
+export function TrendLines({ data, keys, names, height = 280 }: { data: Record<string, number | string>[]; keys: string[]; names: Record<string, string>; height?: number }) {
   return (
-    <ResponsiveContainer width="100%" height={260}>
+    <ResponsiveContainer width="100%" height={height}>
       <LineChart data={trim(data, (r) => keys.some((k) => Number(r[k]) > 0))} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
         <CartesianGrid stroke={LINE} vertical={false} />
         <XAxis dataKey="week" tickFormatter={fmtWeek} {...axis} />
@@ -31,7 +31,7 @@ export function TrendLines({ data, keys, names }: { data: Record<string, number 
         <Tooltip {...tip} labelFormatter={(w) => `Week of ${fmtWeek(String(w))}`} />
         <Legend {...legend} iconType="plainline" />
         {keys.map((k, i) => (
-          <Line key={k} type="linear" dataKey={k} name={names[k] ?? k} stroke={SERIES[i % SERIES.length]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+          <Line key={k} type="linear" dataKey={k} name={names[k] ?? k} stroke={SERIES[i % SERIES.length]} strokeWidth={2} dot={{ r: 2.5 }} activeDot={{ r: 4.5 }} />
         ))}
       </LineChart>
     </ResponsiveContainer>
@@ -84,6 +84,43 @@ export function KeywordBars({ data }: { data: { keyword: string; mentions: numbe
         <Legend {...legend} />
         <Bar dataKey="prev" name="Last week" fill={GHOST} radius={[0, 3, 3, 0]} />
         <Bar dataKey="mentions" name="This week" fill={INK} radius={[0, 3, 3, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Share of this week's posts per community. */
+export function Donut({ data, centerLabel }: { data: { name: string; value: number }[]; centerLabel?: string }) {
+  const total = data.reduce((a, d) => a + d.value, 0);
+  return (
+    <div className="relative">
+      <ResponsiveContainer width="100%" height={190}>
+        <PieChart>
+          <Pie data={data} dataKey="value" nameKey="name" innerRadius={58} outerRadius={84} paddingAngle={1.5} stroke="none" isAnimationActive={false}>
+            {data.map((_, i) => <Cell key={i} fill={SERIES[i % SERIES.length]} />)}
+          </Pie>
+          <Tooltip contentStyle={{ borderRadius: 8, border: `1px solid ${LINE}`, fontSize: 13 }} />
+        </PieChart>
+      </ResponsiveContainer>
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+        <span className="num text-[24px] font-bold leading-none">{total}</span>
+        <span className="mt-1 text-[12px] text-muted">{centerLabel ?? "posts"}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Weekly posts stacked by community. */
+export function StackedWeeks({ data, keys, names }: { data: Record<string, number | string>[]; keys: string[]; names: Record<string, string> }) {
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <BarChart data={trim(data, (r) => keys.some((k) => Number(r[k]) > 0))} margin={{ top: 8, right: 12, left: -16, bottom: 0 }}>
+        <CartesianGrid stroke={LINE} vertical={false} />
+        <XAxis dataKey="week" tickFormatter={fmtWeek} {...axis} />
+        <YAxis allowDecimals={false} {...axis} />
+        <Tooltip {...tip} labelFormatter={(w) => `Week of ${fmtWeek(String(w))}`} />
+        <Legend {...legend} />
+        {keys.map((k, i) => <Bar key={k} dataKey={k} name={names[k] ?? k} stackId="s" fill={SERIES[i % SERIES.length]} maxBarSize={44} />)}
       </BarChart>
     </ResponsiveContainer>
   );

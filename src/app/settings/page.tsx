@@ -3,6 +3,7 @@ import { getSources, getTopics } from "@/lib/config";
 import { lastCompleteWeek, currentWeek, weekLabel } from "@/lib/week";
 import { Setup } from "@/components/Setup";
 import { SettingsClient } from "@/components/SettingsClient";
+import { Page, PageHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -22,21 +23,19 @@ export default async function SettingsPage() {
   const weeks = [lastCompleteWeek(), currentWeek()].map((w) => ({ value: w, label: weekLabel(w) + (w === currentWeek() ? " (so far)" : "") }));
 
   return (
-    <div className="space-y-4">
-      <h1 className="font-display text-4xl font-bold tracking-tight">Topics &amp; sources</h1>
-      <p className="max-w-[70ch] text-[17px] text-muted">
-        Topics and keywords live in Supabase, so changes here apply from the next collection run, with no code changes.
-        The Friday brief can also add keywords it sees developers using; those are marked and listed below.
-      </p>
-      <SettingsClient
-        topics={topics}
-        sources={sources}
-        changes={changes ?? []}
-        runs={runs ?? []}
-        postCount={postCount ?? 0}
-        weeks={weeks}
-        geminiModel={process.env.GEMINI_MODEL || "gemini-3.6-flash"}
-      />
-    </div>
+    <>
+      <PageHeader title="Settings" subtitle="Topics and keywords live in Supabase, so changes apply from the next collection run, with no code changes." />
+      <Page>
+        <SettingsClient
+          topics={topics}
+          sources={sources}
+          changes={changes ?? []}
+          runs={runs ?? []}
+          postCount={postCount ?? 0}
+          weeks={weeks}
+          geminiModel={process.env.GEMINI_MODEL || "gemini-3.6-flash"}
+        />
+      </Page>
+    </>
   );
 }

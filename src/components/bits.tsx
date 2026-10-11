@@ -29,15 +29,19 @@ export function SourceName({ id }: { id: string }) {
   return <>{SOURCE_LABELS[id] ?? id}</>;
 }
 
-/** Inline 8-week trend line, rendered on the server. */
-export function Sparkline({ values, highlightLast = true }: { values: number[]; highlightLast?: boolean }) {
-  const w = 96, h = 26, max = Math.max(1, ...values);
+/** Inline trend line, rendered on the server. */
+export function Sparkline({ values, width = 96, height = 26, stroke = "var(--color-muted)", area = false, highlightLast = true }: {
+  values: number[]; width?: number; height?: number; stroke?: string; area?: boolean; highlightLast?: boolean;
+}) {
+  const w = width, h = height, max = Math.max(1, ...values);
   const pts = values.map((v, i) => [(i / Math.max(1, values.length - 1)) * (w - 4) + 2, h - 3 - (v / max) * (h - 6)]);
   const last = pts[pts.length - 1];
+  const line = pts.map((p) => p.join(",")).join(" ");
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-label={`Weekly mentions: ${values.join(", ")}`} role="img">
-      <polyline points={pts.map((p) => p.join(",")).join(" ")} fill="none" stroke="var(--color-muted)" strokeWidth="1.5" strokeLinejoin="round" />
-      {highlightLast && last && <circle cx={last[0]} cy={last[1]} r="2.6" fill="var(--color-ink)" />}
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-label={`Weekly values: ${values.join(", ")}`} role="img" className="shrink-0">
+      {area && pts.length > 1 && <polygon points={`${pts[0][0]},${h} ${line} ${last[0]},${h}`} fill={stroke} opacity="0.12" />}
+      <polyline points={line} fill="none" stroke={stroke} strokeWidth="1.6" strokeLinejoin="round" />
+      {highlightLast && last && <circle cx={last[0]} cy={last[1]} r="2.6" fill={stroke} />}
     </svg>
   );
 }
