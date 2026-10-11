@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #eef1f5;
+  --color-surface: #ffffff;
+  --color-ink: #172033;
+  --color-muted: #5d6880;
+  --color-line: #d6dce6;
+  --color-rise: #c8364f;
+  --color-ease: #1f8a7a;
+  --color-cobalt: #2b50d6;
+  --color-amber: #b7791f;
+  --color-amber-soft: #fbefd8;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Public Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+html { background: var(--color-paper); color: var(--color-ink); }
+body { font-family: var(--font-sans); font-feature-settings: "tnum" 1; -webkit-font-smoothing: antialiased; }
+::selection { background: #c9d4ff; }
+a { text-underline-offset: 3px; }
+:focus-visible { outline: 2px solid var(--color-cobalt); outline-offset: 2px; border-radius: 4px; }
+
+.num { font-family: var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.panel { background: var(--color-surface); border: 1px solid var(--color-line); border-radius: 10px; }
+
+@keyframes reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.reveal { animation: reveal 600ms cubic-bezier(.2,.7,.2,1) both; }
+@media (prefers-reduced-motion: reduce) { .reveal { animation: none; } }
