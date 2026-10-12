@@ -2,7 +2,9 @@
 
 A Friday-morning brief of what developers are struggling with around code review, CI/CD and developer workflow. It is built from public posts on Stack Overflow, Stack Exchange, Reddit, Hacker News, DEV, Lobsters and devRant.
 
-It ranks this week's pain points by priority for Sumit (relevance to a code review automation product, rated by Gemini, combined with volume, growth, unresolved share and negativity), shows whether each topic is rising or falling versus last week, and flags problems that look unresolved or underserved. Click any topic or keyword for charts, the underlying posts and an AI deep dive.
+Instead of a wall of charts, the Overview is a one-screen decision memo for Sumit (the PM of a code review automation startup): **at most three calls a week** (Build, Investigate, Message or Ignore for now), each with countable evidence, one next step, a word-for-word developer quote, and a yes/no question for Monday's sprint planning. Code decides which calls the evidence supports; Gemini only words them, and every number it writes is checked against the data. Charts, topics and every pain theme are one click away.
+
+**How it turns into ROI** (without inventing dollar figures): a Build call comes with a ready-to-paste ticket and an in-product success metric; Investigate tells Sumit who to interview and what to ask, so a wrong bet costs a day instead of a sprint; Message gives sales a line backed by a real developer quote; Ignore for now stops the team chasing one-week spikes; and next Friday, "did the signal hold?" checks last week's calls.
 
 - **AI:** Gemini Flash only (default `gemini-3.6-flash`, automatic fallback to `gemini-2.5-flash`).
 - **Data and config:** Supabase. Topics and keywords are rows in Supabase, so they change without code changes. The dashboard itself is read-only and needs no login.
@@ -33,6 +35,9 @@ Create an API key at aistudio.google.com/apikey.
 Open `https://<your-app>.vercel.app/settings` and click **Check for new data** (no passcode; the server limits how often it runs).
 
 The first collection backfills 21 days, so the brief has a real "vs last week" comparison straight away. Analysis runs in repeated chunks until every post is done. The brief for the last complete week is written at the end.
+
+## Tests
+`npm test` runs the decision-engine unit tests (`src/lib/decide.test.ts`) on the real 2–8 Oct 2026 numbers.
 
 ## Run locally
 ```bash

@@ -3,7 +3,8 @@ import { db, fetchAll } from "./supabase";
 import { getTopics } from "./config";
 import { addWeeks, currentWeek, isWeek, lastCompleteWeek } from "./week";
 import { summarize, delta, pct, type TopicSummary } from "./stats";
-import { prioritize, ratingsFrom } from "./priority";
+import { sourceLabel } from "./labels";
+import { callsFrom, computedHeadline, computedWatch, coverageNote, evidenceFor, headlineOk, ratingsFrom, signalHeld, themeStatsFrom, thresholds, type Call, type Evidence } from "./decide";
 import type { Digest, PainTheme, PostRow, Topic, TopicWeekStat } from "./types";
 
 export type WeekTotals = { total: number; analyzed: number; negative: number; pain: number; unresolved: number };
@@ -34,17 +35,14 @@ export async function getOverview(weekParam?: string | null) {
   const since = addWeeks(week, -7);
   const weeks = Array.from({ length: 8 }, (_, i) => addWeeks(since, i));
 
-  const [topics, statRes, cur, prev, digestRes, themeRes, srcRes, runRes, pendingRes, changesRes] = await Promise.all([
+  const [topics, statRes, cur, prev, digestRes, srcRes, runRes] = await Promise.all([
     getTopics(),
     db().rpc("topic_weekly_stats", { p_since: since }),
     totals(week),
     totals(prevWeek),
     db().from("digests").select("*").eq("week_start", week).maybeSingle(),
-    db().from("pain_themes").select("*").eq("week_start", week).order("mentions", { ascending: false }),
     db().rpc("source_weekly_stats", { p_since: prevWeek }),
     db().from("runs").select("stage, started_at, finished_at, ok, error").order("started_at", { ascending: false }).limit(1),
-    db().from("posts").select("id", { count: "exact", head: true }).eq("analyzed", false),
-    db().from("keyword_changes").select("*").gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString()).order("created_at", { ascending: false }).limit(10),
   ]);
 
   const weekTotals = await Promise.all(weeks.map((w) => (w === week ? Promise.resolve(cur) : w === prevWeek ? Promise.resolve(prev) : totals(w))));
@@ -76,16 +74,91 @@ export async function getOverview(weekParam?: string | null) {
       prevNegativePct: pct(prev.negative, prev.analyzed),
     },
     digest,
-    themes: prioritize((themeRes.data ?? []) as PainTheme[], ratingsFrom(digest?.stats)),
     sources,
     kpiSeries,
     lastRun: runRes.data?.[0] ?? null,
-    pending: pendingRes.count ?? 0,
-    changes: (changesRes.data ?? []) as { topic_slug: string; keyword: string; action: string; reason: string; created_at: string }[],
   };
 }
 
 export type Overview = Awaited<ReturnType<typeof getOverview>>;
+
+/**
+ * Everything the calls for one week rest on: that week's pain themes and the 8-week window around them, the
+ * stored brief (fit ratings, exact blocking/thread counts, Gemini's validated calls) and the totals that set
+ * the evidence thresholds. Shared by the Overview memo and the Pain points page so they always agree.
+ */
+async function weekEvidence(week: string) {
+  const prevWeek = addWeeks(week, -1);
+  const since = addWeeks(week, -7);
+  const weeks = Array.from({ length: 8 }, (_, i) => addWeeks(since, i));
+  const [cur, prev, digestRes, prevDigestRes, themeRes] = await Promise.all([
+    totals(week),
+    totals(prevWeek),
+    db().from("digests").select("*").eq("week_start", week).maybeSingle(),
+    db().from("digests").select("stats").eq("week_start", prevWeek).maybeSingle(),
+    db().from("pain_themes").select("*").gte("week_start", since).lte("week_start", week),
+  ]);
+  const all = (themeRes.data ?? []) as PainTheme[];
+  const themes = all.filter((t) => t.week_start === week);
+  const digest = (digestRes.data ?? null) as Digest | null;
+  const th = thresholds(cur.pain);
+  const evs = evidenceFor({
+    week, weeks, themes, th, prevTotal: prev.total,
+    history: all.filter((t) => t.week_start !== week),
+    ratings: ratingsFrom(digest?.stats), themeStats: themeStatsFrom(digest?.stats),
+  });
+  const { calls, source, stored } = callsFrom(digest?.stats, evs, week);
+  const prevStats = prevDigestRes.data?.stats as { calls_version?: number; calls?: unknown } | undefined;
+  const held = prevStats?.calls_version === 1 ? signalHeld(prevStats.calls, themes, th) : [];
+  return { week, prevWeek, weeks, cur, prev, digest, all, themes, th, evs, calls, callsSource: source, stored, held, weeksTracked: evs[0]?.weeksTracked ?? 0 };
+}
+
+/** The Overview: this week's calls, the Monday question, what's on the radar and how sure we are. */
+export async function getBrief(weekParam?: string | null) {
+  const week = await resolveWeek(weekParam);
+  const [ev, topics, { data: srcRows }, { data: srcs }, { data: runs }] = await Promise.all([
+    weekEvidence(week),
+    getTopics(),
+    db().rpc("source_weekly_stats", { p_since: week }),
+    db().from("sources").select("id, name, enabled"),
+    db().from("runs").select("stage, started_at, ok").order("started_at", { ascending: false }).limit(1),
+  ]);
+  const { cur, prev, digest, calls, callsSource, stored } = ev;
+  const bySource = new Map<string, number>();
+  for (const r of (srcRows ?? []) as { week_start: string; source: string; mentions: number }[]) {
+    if (r.week_start !== week) continue;
+    // Stack Overflow and other Stack Exchange sites are one collector.
+    const id = r.source === "stackoverflow" ? "stackexchange" : r.source;
+    bySource.set(id, (bySource.get(id) ?? 0) + Number(r.mentions));
+  }
+  const sources = [...bySource.entries()].map(([source, mentions]) => ({ source, mentions })).filter((s) => s.mentions > 0);
+  const silent = ((srcs ?? []) as { id: string; enabled: boolean }[]).filter((s) => s.enabled && !bySource.get(s.id)).map((s) => sourceLabel(s.id));
+
+  // Text the brief wrote is used only when its calls survived and it is about call #1; otherwise it is computed, so they never disagree.
+  const fromBrief = stored && !!digest;
+  const aboutFirst = (s: string | null | undefined) => !!s && headlineOk(s, calls[0], null);
+  const headline = (fromBrief && aboutFirst(digest!.headline) ? digest!.headline : computedHeadline(calls))
+    ?? (ev.themes.length ? `No theme has enough evidence for a call this week; ${cur.pain} pain posts read.` : digest?.headline ?? `${cur.total} developer posts collected so far this week.`);
+  const watch = fromBrief && aboutFirst(digest!.watch) ? digest!.watch : computedWatch(calls);
+  const dec = (digest?.stats as { decision?: { lean?: string; because?: string } | null } | undefined)?.decision;
+  const decision = fromBrief && watch === digest!.watch && callsSource === "gemini" && dec && (dec.lean === "yes" || dec.lean === "no") && dec.because ? { lean: dec.lean, because: dec.because } : null;
+  const called = new Set(calls.map((c) => c.theme));
+  const radar = ev.evs.filter((e) => !called.has(e.theme) && e.n > 0).slice(0, 4);
+  const evidenceOf = (c: Call) => ev.evs.find((e) => e.theme === c.theme) as Evidence;
+
+  return {
+    week, prevWeek: ev.prevWeek, weeks: ev.weeks, isCurrent: week === currentWeek(),
+    totals: cur, prevTotals: prev,
+    names: Object.fromEntries(topics.map((t) => [t.slug, t.name])) as Record<string, string>,
+    digest, calls: calls.map((c) => ({ call: c, evidence: evidenceOf(c) })), callsSource, headline, watch, decision,
+    radar, held: ev.held, themeCount: ev.evs.filter((e) => e.n > 0).length, hasThemes: ev.themes.length > 0,
+    weeksTracked: ev.weeksTracked, th: ev.th,
+    communities: sources.length,
+    coverage: coverageNote({ total: cur.total, analyzed: cur.analyzed, sources, silent, weeksTracked: ev.weeksTracked, label: sourceLabel }),
+    lastRun: (runs?.[0] ?? null) as { stage: string; started_at: string; ok: boolean | null } | null,
+  };
+}
+export type Brief = Awaited<ReturnType<typeof getBrief>>;
 
 const LIGHT = "id, source, url, title, score, comments, posted_at, week_start, topic_slugs, matched_keywords, answered, analyzed, relevant, sentiment, sentiment_label, is_pain, pain_point, unresolved, severity";
 
@@ -197,27 +270,28 @@ export async function getSourcesPage(weekParam?: string | null) {
   return { week, prevWeek, weeks, series, ids, bySource, sources: (srcs ?? []) as { id: string; name: string; enabled: boolean }[], perSource, lastCollect };
 }
 
-/** Pain themes with 8-week history (theme names are reused week to week) and the raw phrases behind them. */
+/** Pain themes ranked by the same evidence as the Overview's calls, with 8-week history and the raw phrases behind them. */
 export async function getPainPage(weekParam?: string | null) {
   const week = await resolveWeek(weekParam);
-  const since = addWeeks(week, -7);
-  const weeks = Array.from({ length: 8 }, (_, i) => addWeeks(since, i));
-  const [topics, { data: themeRows }, { data: digestRow }, phrases] = await Promise.all([
+  const [ev, topics, phrases] = await Promise.all([
+    weekEvidence(week),
     getTopics(),
-    db().from("pain_themes").select("*").gte("week_start", since).lte("week_start", week),
-    db().from("digests").select("stats").eq("week_start", week).maybeSingle(),
     fetchAll<{ pain_point: string; topic_slugs: string[]; unresolved: boolean | null; severity: number | null }>((from, to) =>
       db().from("posts").select("pain_point, topic_slugs, unresolved, severity").eq("week_start", week).eq("is_pain", true)
         .not("pain_point", "is", null).or("relevant.is.null,relevant.eq.true").range(from, to)),
   ]);
-  const all = (themeRows ?? []) as PainTheme[];
-  const current = prioritize(all.filter((t) => t.week_start === week), ratingsFrom(digestRow?.stats)).map((t) => ({
-    ...t,
-    history: weeks.map((w) => {
-      const h = all.find((x) => x.week_start === w && x.theme.toLowerCase() === t.theme.toLowerCase());
-      return w === addWeeks(week, -1) && !h ? t.prev_mentions : h?.mentions ?? 0;
-    }),
-  }));
+  const verbOf = new Map(ev.calls.map((c) => [c.theme, c.verb]));
+  const themes = ev.evs.map((e) => {
+    const t = ev.themes.find((x) => x.theme === e.theme)!;
+    return {
+      ...e, theme_row: t, call: verbOf.get(e.theme) ?? null,
+      history: ev.weeks.map((w) => {
+        if (w === week) return e.n;
+        const h = ev.all.find((x) => x.week_start === w && x.theme.toLowerCase() === e.theme.toLowerCase());
+        return w === ev.prevWeek && !h ? e.p : h?.mentions ?? 0;
+      }),
+    };
+  });
   const map = new Map<string, { n: number; unresolved: number; severe: number; topics: Map<string, number> }>();
   for (const p of phrases) {
     const g = map.get(p.pain_point) ?? { n: 0, unresolved: 0, severe: 0, topics: new Map() };
@@ -228,5 +302,5 @@ export async function getPainPage(weekParam?: string | null) {
   const phraseRows = [...map.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 25).map(([text, g]) => ({
     text, n: g.n, unresolved: g.unresolved, severe: g.severe, topic: [...g.topics.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
   }));
-  return { week, weeks, topics, themes: current, phrases: phraseRows, totalPain: phrases.length };
+  return { week, weeks: ev.weeks, topics, themes, phrases: phraseRows, totalPain: phrases.length, th: ev.th, weeksTracked: ev.weeksTracked };
 }
