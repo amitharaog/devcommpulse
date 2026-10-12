@@ -189,8 +189,10 @@ export function evidenceFor(input: EvidenceInput): Evidence[] {
         fit: rated.get(t.theme.toLowerCase()) ?? TOPIC_RELEVANCE[t.topic_slug ?? ""] ?? "medium",
         weeksSeen, weeksTracked, need, marks,
       };
-      const spike = isSpike(base, th);
-      const strength = strengthOf(base, th);
+      // A spike needs a known last week: with no data for it, "up from 0" would be invented.
+      const spike = tracked[weeks.length - 2] && isSpike(base, th);
+      const raw = strengthOf(base, th);
+      const strength: Strength = spike && raw === "strong" ? "moderate" : raw; // one week of noise is never strong evidence
       const e = { ...base, spike, strength };
       const allowed = allowedVerbs(e, th);
       const o = WEIGHT[e.fit] * (u + (e.blocking ?? 0)) * Math.min(1, weeksSeen / need);
@@ -225,7 +227,7 @@ export function whyTemplate(verb: Verb, e: Evidence): string {
   }
   const reason = e.spike ? `it only appeared this week (up from ${e.p})`
     : e.fit === "medium" ? "it sits next to the product, not in it"
-    : e.allowed.includes("build") ? "it is a second build case; validate before committing engineering to two"
+    : e.allowed.includes("build") ? "it has a build case too; validate with customers before committing engineering"
     : e.strength === "strong" && e.weeksTracked < 2 ? "there is only one week of history so far"
     : e.strength === "strong" ? "most of it isn't clearly unsolved yet"
     : "the evidence is still moderate";
@@ -276,9 +278,12 @@ export function numbersIn(s: string): number[] {
   return (s.match(/\d[\d,]*(?:\.\d+)?/g) ?? []).map((x) => Number(x.replace(/,/g, "")));
 }
 
-/** True when text has no money/superlative wording and (if a set is given) only numbers from that set. */
+// "2x faster", "5k a year", "3 hours a week": claims the data can't support, even when the digit itself is allowed.
+const UNIT = /\d(?:\.\d+)?\s*(?:x\b|×|k\b|m\b|bn\b|times\b|million|billion|thousand|hours?\b|hrs?\b|minutes?\b|mins?\b|days?\b)/i;
+
+/** True when text has no money/superlative wording or invented units and (if a set is given) only numbers from that set. */
 export function checkText(s: string, allowed: Set<number> | null): boolean {
-  if (BANNED.test(s)) return false;
+  if (BANNED.test(s) || UNIT.test(s)) return false;
   return !allowed || numbersIn(s).every((n) => allowed.has(n));
 }
 
@@ -350,8 +355,8 @@ export function validateCalls(raw: unknown, evs: Evidence[], allowed: Set<number
       call.next_step = verb === "ignore" ? "" : pick("next_step", 180, t.next_step);
     }
     call.pitch = keep("pitch") ? pick("pitch", 160, "") : "";
-    const who = keep("ask_who") ? pick("ask_who", 110, "") : "";
-    call.ask_who = /@|http|www\.|\bu\//i.test(who) ? "" : who;
+    const who = keep("ask_who") ? clip(r.ask_who, 110) : "";
+    call.ask_who = !who || !checkText(who, null) || /@|http|www\.|\bu\//i.test(who) ? "" : who;
     const q = keep("ask_question") ? pick("ask_question", 160, "") : "";
     call.ask_question = q.endsWith("?") ? q : "";
     call.metric = keep("metric") ? pick("metric", 110, "") : "";
@@ -361,6 +366,12 @@ export function validateCalls(raw: unknown, evs: Evidence[], allowed: Set<number
     out.push(call);
   }
   return out;
+}
+
+/** Calls in reading order: build, investigate, message, ignore; within a verb, by evidence rank. */
+export function orderCalls(calls: Call[], evs: Evidence[]): Call[] {
+  const rank = (c: Call) => evs.findIndex((e) => e.theme === c.theme);
+  return [...calls].sort((a, b) => VERBS.indexOf(a.verb) - VERBS.indexOf(b.verb) || rank(a) - rank(b));
 }
 
 /** A MESSAGE call is only worth making with a developer's own words behind it. */
@@ -376,7 +387,7 @@ export function enforceMessageQuotes(calls: Call[], evs: Evidence[], week: strin
 export function callsFrom(stats: unknown, evs: Evidence[], week: string): { calls: Call[]; source: "gemini" | "computed"; stored: boolean } {
   const s = stats as { calls_version?: number; calls?: unknown; calls_source?: string } | null;
   if (s?.calls_version === 1 && Array.isArray(s.calls)) {
-    const calls = enforceMessageQuotes(validateCalls(s.calls, evs, null, week), evs, week);
+    const calls = orderCalls(enforceMessageQuotes(validateCalls(s.calls, evs, null, week), evs, week), evs);
     if (calls.length) return { calls, source: s.calls_source === "gemini" ? "gemini" : "computed", stored: true };
   }
   return { calls: computedCalls(evs, week), source: "computed", stored: false };
@@ -385,13 +396,33 @@ export function callsFrom(stats: unknown, evs: Evidence[], week: string): { call
 // ---------- headline and the Monday question ----------
 
 const HEADLINE_STOP = new Set(["about", "their", "these", "which", "while", "teams", "developers", "review"]);
-/** Gemini's headline must talk about call #1 and pass the number/money check. */
-export function headlineOk(h: string, first: Call | undefined, allowed: Set<number> | null): boolean {
+const contentWords = (s: string) => (s.toLowerCase().match(/[a-z]+/g) ?? []).filter((w) => w.length >= 5 && !HEADLINE_STOP.has(w));
+
+/** Numbers a sentence about one call may cite: that call's own evidence, simple differences and small counts. */
+function ownNumbers(c: Call): Set<number> {
+  const e = c.evidence;
+  const out = new Set<number>([1, 2, 3, e.posts, e.last_week, e.unresolved, e.posts - e.unresolved, e.weeks_seen, e.weeks_tracked, Math.abs(e.posts - e.last_week)]);
+  if (e.blocking != null) out.add(e.blocking);
+  if (e.threads != null) out.add(e.threads);
+  if (e.posts) out.add(Math.round((100 * e.unresolved) / e.posts));
+  if (e.last_week) out.add(Math.round((100 * Math.abs(e.posts - e.last_week)) / e.last_week));
+  return out;
+}
+
+/**
+ * Gemini's headline (or Monday question) is kept only if it is about call #1, cites only call #1's own numbers,
+ * and doesn't lead with a theme the page tells Sumit to ignore. Otherwise the computed text is used.
+ */
+export function headlineOk(h: string, calls: Call[], allowed: Set<number> | null): boolean {
   if (!h || !checkText(h, allowed)) return false;
+  const first = calls[0];
   if (!first) return true;
-  const words = (s: string) => (s.toLowerCase().match(/[a-z]+/g) ?? []).filter((w) => w.length >= 5 && !HEADLINE_STOP.has(w));
-  const hw = new Set(words(h));
-  return [...words(first.theme), ...words(first.title)].some((w) => hw.has(w));
+  if (!numbersIn(h).every((n) => ownNumbers(first).has(n))) return false;
+  const hw = new Set(contentWords(h));
+  const firstWords = new Set([...contentWords(first.theme), ...contentWords(first.title)]);
+  if (![...firstWords].some((w) => hw.has(w))) return false;
+  const ignored = calls.slice(1).filter((c) => c.verb === "ignore").flatMap((c) => [...contentWords(c.theme), ...contentWords(c.title)]).filter((w) => !firstWords.has(w));
+  return !ignored.some((w) => hw.has(w));
 }
 
 export function computedHeadline(calls: Call[]): string | null {
@@ -400,13 +431,15 @@ export function computedHeadline(calls: Call[]): string | null {
   const e = c.evidence;
   if (c.verb === "build") return `Strongest build case: ${c.theme}, with ${e.unresolved} of ${e.posts} posts unresolved.`;
   if (c.verb === "investigate" || c.verb === "message") return `Nothing is build-ready yet; worth a closer look: ${c.theme}, ${e.unresolved} of ${e.posts} posts unresolved.`;
-  return `No theme is ready to build or test; the loudest change, ${c.theme}, looks like a one-week spike.`;
+  return e.fit === "low"
+    ? `No theme is ready to build or test; the loudest, ${c.theme} (${e.posts} posts), sits outside the product.`
+    : `No theme is ready to build or test; the loudest change, ${c.theme}, looks like a one-week spike.`;
 }
 
 export function computedWatch(calls: Call[]): string | null {
   const c = calls[0];
   if (!c) return null;
-  if (c.verb === "build") return `Should '${c.theme}' get a spike next sprint, given ${c.evidence.unresolved} of ${c.evidence.posts} posts are still unresolved?`;
+  if (c.verb === "build") return `Should '${c.theme}' get a time-boxed prototype next sprint, given ${c.evidence.unresolved} of ${c.evidence.posts} posts are still unresolved?`;
   if (c.verb === "investigate" || c.verb === "message") return `Can we line up 3 customer conversations about '${c.theme}' before next Friday?`;
   return null;
 }

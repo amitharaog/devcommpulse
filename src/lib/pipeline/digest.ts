@@ -8,7 +8,7 @@ import { slugify } from "../match";
 import { deliverBrief } from "../notify";
 import {
   allowedNumbers, checkText, computedCalls, computedHeadline, computedWatch, enforceMessageQuotes, evidenceFor, headlineOk,
-  isRelevance, thresholds, threadKey, validateCalls, verifyQuote, STRENGTH_LABEL,
+  isRelevance, orderCalls, thresholds, threadKey, validateCalls, verifyQuote, STRENGTH_LABEL,
   type Call, type ThemeRating, type ThemeStat,
 } from "../decide";
 import type { PainTheme, TopicWeekStat } from "../types";
@@ -203,14 +203,25 @@ Return {"calls":[{"theme":"","verb":"build","title":"","why":"","next_step":"","
   if (!calls.length) { calls = computedCalls(evs, week); callsSource = "computed"; }
   calls = enforceMessageQuotes(await withQuotes(calls, evs.map((e) => ({ theme: e.theme, ids: e.example_ids }))), evs, week);
   if (!calls.length && callsSource === "gemini") { calls = computedCalls(evs, week); callsSource = "computed"; }
+  calls = orderCalls(calls, evs);
 
+  // Gemini wrote its headline, Monday question and lean about ITS first call. Keep them only if that call
+  // survived validation unchanged and is still first; otherwise use the computed text so nothing contradicts the calls.
+  const raw0 = Array.isArray(brief.calls) ? (brief.calls[0] as { theme?: unknown; verb?: unknown } | undefined) : undefined;
+  const firstIntact = callsSource === "gemini" && !!calls[0] && !!raw0
+    && String(raw0.theme ?? "").trim().toLowerCase() === calls[0].theme.toLowerCase()
+    && String(raw0.verb ?? "").trim().toLowerCase() === calls[0].verb;
   const h = String(brief.headline ?? "").trim();
-  const headline = (headlineOk(h, calls[0], nums) ? h : computedHeadline(calls))
-    ?? (h && checkText(h, nums) ? h : themes.length ? `No theme has enough evidence for a call this week; ${cur.pain} pain posts read.` : `${totalCur} posts matched this week.`);
+  const headline = calls.length
+    ? (firstIntact && headlineOk(h, calls, nums) ? h : computedHeadline(calls)!)
+    : themes.length ? `No theme has enough evidence for a call this week; ${cur.pain} pain posts read.`
+    : h && checkText(h, nums) ? h : `${totalCur} posts matched this week.`;
   const w = String(brief.watch ?? "").trim();
-  const watch = calls.length ? (w && checkText(w, nums) && callsSource === "gemini" ? w : computedWatch(calls)) : null;
+  const geminiWatch = firstIntact && headlineOk(w, calls, nums);
+  const watch = calls.length ? (geminiWatch ? w : computedWatch(calls)) : null;
   const because = String(brief.because ?? "").trim();
-  const decision = callsSource === "gemini" && (brief.lean === "yes" || brief.lean === "no") && because && checkText(because, nums) && hasNumber(because)
+  // The lean answers Gemini's own question, so it is only shown with that question.
+  const decision = geminiWatch && (brief.lean === "yes" || brief.lean === "no") && because && checkText(because, nums) && hasNumber(because)
     ? { lean: brief.lean, because: because.slice(0, 160) } : null;
   const bullets = (brief.bullets ?? []).map((b) => String(b).trim()).filter((b) => b && checkText(b, nums)).slice(0, 5);
 
@@ -283,7 +294,7 @@ async function withQuotes(calls: Call[], examples: { theme: string; ids: string[
       `For each theme, pick the single most telling post and copy one exact, contiguous quote of 8–30 words that shows the pain. Copy it character for character: do not paraphrase, shorten with ellipses or fix typos. Return {"quotes":[{"theme":"","post":0,"quote":""}]}
 
 ${JSON.stringify(input.map((x) => ({ theme: x.theme, posts: x.posts.map(({ id: _id, ...p }) => p) })))}`,
-      { system: SYSTEM, maxOutputTokens: 1024 },
+      { system: SYSTEM, maxOutputTokens: 1024, timeoutMs: 15_000 }, // optional: never let it eat the cron's time budget
     );
     return calls.map((c) => {
       const q = (out.quotes ?? []).find((x) => x.theme === c.theme);

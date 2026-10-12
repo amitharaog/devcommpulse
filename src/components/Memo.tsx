@@ -73,8 +73,9 @@ function Facts({ e, showTheme }: { e: Evidence; showTheme?: boolean }) {
 function QuoteLine({ c }: { c: Call }) {
   if (!c.quote) return null;
   return (
-    <p className="line-clamp-2 text-[13.5px] italic text-ink/80">
-      “{c.quote.text}” <a href={c.quote.url} target="_blank" rel="noreferrer" className="not-italic text-cobalt hover:underline">— {sourceLabel(c.quote.source)} ↗</a>
+    <p className="text-[13.5px] italic text-ink/80">
+      <span className="line-clamp-2">“{c.quote.text}”</span>
+      <a href={c.quote.url} target="_blank" rel="noreferrer" className="not-italic text-cobalt hover:underline">— {sourceLabel(c.quote.source)} ↗</a>
     </p>
   );
 }
@@ -111,7 +112,7 @@ export function CallRow({ c, e, week, first, computed }: { c: Call; e: Evidence;
       <li className="space-y-1 px-5 py-3.5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <VerbChip verb="ignore" />
-          <Link href={href} className="min-w-0 flex-1 truncate text-[16px] font-medium text-muted hover:text-ink hover:underline">{c.title}</Link>
+          <Link href={href} className="min-w-0 flex-[1_1_14rem] text-[16px] font-medium leading-snug text-muted hover:text-ink hover:underline">{c.title}</Link>
           <StrengthLabel strength={e.strength} />
         </div>
         <p className="line-clamp-1 text-[13px] text-muted sm:pl-[130px]">{c.why}</p>
@@ -123,13 +124,13 @@ export function CallRow({ c, e, week, first, computed }: { c: Call; e: Evidence;
     <li className="space-y-1.5 px-5 py-4">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <VerbChip verb={c.verb} />
-        <Link href={href} className="min-w-0 flex-1 text-[17px] font-semibold leading-snug hover:text-cobalt hover:underline">{c.title}</Link>
+        <Link href={href} className="min-w-0 flex-[1_1_14rem] text-[17px] font-semibold leading-snug hover:text-cobalt hover:underline">{c.title}</Link>
         <StrengthLabel strength={e.strength} />
       </div>
       <div className="space-y-1.5 sm:pl-[130px]">
         <Facts e={e} showTheme={c.title !== c.theme} />
         <p className="text-[14px]"><span className="font-semibold">Next:</span> {c.next_step}</p>
-        {first && <QuoteLine c={c} />}
+        {(first || c.verb === "message") && <QuoteLine c={c} />}
         <UseIt c={c} e={e} week={week} computed={computed} />
       </div>
     </li>
@@ -182,13 +183,13 @@ export function RadarList({ items, week }: { items: Evidence[]; week: string }) 
 }
 
 /** The method in plain words, with thresholds taken from the code so the copy can't drift. */
-export function HowCallsAreMade({ th, need, id = "how", open }: { th: Thresholds; need: number; id?: string; open?: boolean }) {
+export function HowCallsAreMade({ th, need, threadsKnown = true, id = "how", open }: { th: Thresholds; need: number; threadsKnown?: boolean; id?: string; open?: boolean }) {
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   return (
     <details id={id} open={open} className="rounded-lg border border-line bg-surface px-4 py-3 text-[13.5px]">
       <summary className="cursor-pointer font-medium">How calls are made</summary>
       <ol className="mt-2 list-decimal space-y-1.5 pl-5 leading-relaxed text-ink/90">
-        <li>Every pain theme gets an evidence level from its posts, the share still unresolved, the weeks it has been seen and how many separate threads it comes from. <b>Strong</b> means at least {th.minStrong} posts, {pct(UNRES_STRONG)} or more unresolved, seen in {need} or more of the tracked weeks and from at least 3 threads. <b>Moderate</b> means at least {th.minModerate} posts and either {pct(UNRES_MODERATE)} unresolved or seen in 2 or more weeks.</li>
+        <li>Every pain theme gets an evidence level from its posts, the share still unresolved, the weeks it has been seen and how many separate threads it comes from. <b>Strong</b> means at least {th.minStrong} posts, {pct(UNRES_STRONG)} or more unresolved, seen in {need} or more of the tracked weeks and from at least 3 separate threads. <b>Moderate</b> means at least {th.minModerate} posts, either {pct(UNRES_MODERATE)} unresolved or seen in 2 or more weeks, and at least 2 threads. A one-week spike is never rated strong.{!threadsKnown && " This week's brief was written before thread counts were recorded, so the thread rules are skipped for it."}</li>
         <li><b>Build</b> needs strong evidence, core product fit, at least 2 tracked weeks, no one-week spike, and either &ldquo;tools don&apos;t solve it&rdquo; or {pct(UNRES_BUILD)} or more unresolved.</li>
         <li><b>Investigate</b> needs at least moderate evidence and core or adjacent fit, or a new spike in a core area.</li>
         <li><b>Message</b> is an investigate-level theme that is a trust or perception problem. It is only shown with a word-for-word developer quote.</li>

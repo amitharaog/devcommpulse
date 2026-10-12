@@ -4,7 +4,7 @@ import { getTopics } from "./config";
 import { addWeeks, currentWeek, isWeek, lastCompleteWeek } from "./week";
 import { summarize, delta, pct, type TopicSummary } from "./stats";
 import { sourceLabel } from "./labels";
-import { callsFrom, computedHeadline, computedWatch, coverageNote, evidenceFor, headlineOk, ratingsFrom, signalHeld, themeStatsFrom, thresholds, type Call, type Evidence } from "./decide";
+import { callsFrom, computedHeadline, computedWatch, coverageNote, evidenceFor, headlineOk, ratingsFrom, signalHeld, themeStatsFrom, thresholds, weeksTrackedIn, type Call, type Evidence, type Thresholds } from "./decide";
 import type { Digest, PainTheme, PostRow, Topic, TopicWeekStat } from "./types";
 
 export type WeekTotals = { total: number; analyzed: number; negative: number; pain: number; unresolved: number };
@@ -101,16 +101,23 @@ async function weekEvidence(week: string) {
   const all = (themeRes.data ?? []) as PainTheme[];
   const themes = all.filter((t) => t.week_start === week);
   const digest = (digestRes.data ?? null) as Digest | null;
-  const th = thresholds(cur.pain);
+  // Judge stored calls by the thresholds they were made with; analysis that finishes later must not silently re-grade them.
+  const saved = (digest?.stats as { thresholds?: { pain_total?: number; min_strong?: number; min_moderate?: number } } | undefined)?.thresholds;
+  const th: Thresholds = saved && Number.isFinite(saved.min_strong) && Number.isFinite(saved.min_moderate)
+    ? { painTotal: Number(saved.pain_total) || cur.pain, minStrong: Number(saved.min_strong), minModerate: Number(saved.min_moderate) }
+    : thresholds(cur.pain);
+  const history = all.filter((t) => t.week_start !== week);
   const evs = evidenceFor({
     week, weeks, themes, th, prevTotal: prev.total,
-    history: all.filter((t) => t.week_start !== week),
+    history,
     ratings: ratingsFrom(digest?.stats), themeStats: themeStatsFrom(digest?.stats),
   });
   const { calls, source, stored } = callsFrom(digest?.stats, evs, week);
   const prevStats = prevDigestRes.data?.stats as { calls_version?: number; calls?: unknown } | undefined;
-  const held = prevStats?.calls_version === 1 ? signalHeld(prevStats.calls, themes, th) : [];
-  return { week, prevWeek, weeks, cur, prev, digest, all, themes, th, evs, calls, callsSource: source, stored, held, weeksTracked: evs[0]?.weeksTracked ?? 0 };
+  // Until this week is clustered there is nothing to compare last week's calls with.
+  const held = themes.length && prevStats?.calls_version === 1 ? signalHeld(prevStats.calls, themes, th) : [];
+  const weeksTracked = Math.min(8, weeksTrackedIn({ week, weeks, history, prevTotal: prev.total }).filter(Boolean).length);
+  return { week, prevWeek, weeks, cur, prev, digest, all, themes, th, evs, calls, callsSource: source, stored, held, weeksTracked };
 }
 
 /** The Overview: this week's calls, the Monday question, what's on the radar and how sure we are. */
@@ -121,7 +128,7 @@ export async function getBrief(weekParam?: string | null) {
     getTopics(),
     db().rpc("source_weekly_stats", { p_since: week }),
     db().from("sources").select("id, name, enabled"),
-    db().from("runs").select("stage, started_at, ok").order("started_at", { ascending: false }).limit(1),
+    db().from("runs").select("stage, started_at, ok, error").order("started_at", { ascending: false }).limit(1),
   ]);
   const { cur, prev, digest, calls, callsSource, stored } = ev;
   const bySource = new Map<string, number>();
@@ -135,8 +142,9 @@ export async function getBrief(weekParam?: string | null) {
   const silent = ((srcs ?? []) as { id: string; enabled: boolean }[]).filter((s) => s.enabled && !bySource.get(s.id)).map((s) => sourceLabel(s.id));
 
   // Text the brief wrote is used only when its calls survived and it is about call #1; otherwise it is computed, so they never disagree.
-  const fromBrief = stored && !!digest;
-  const aboutFirst = (s: string | null | undefined) => !!s && headlineOk(s, calls[0], null);
+  const storedFirst = (digest?.stats as { calls?: { theme?: string; verb?: string }[] } | undefined)?.calls?.[0];
+  const fromBrief = stored && !!digest && !!calls[0] && storedFirst?.theme === calls[0].theme && storedFirst?.verb === calls[0].verb;
+  const aboutFirst = (s: string | null | undefined) => !!s && headlineOk(s, calls, null);
   const headline = (fromBrief && aboutFirst(digest!.headline) ? digest!.headline : computedHeadline(calls))
     ?? (ev.themes.length ? `No theme has enough evidence for a call this week; ${cur.pain} pain posts read.` : digest?.headline ?? `${cur.total} developer posts collected so far this week.`);
   const watch = fromBrief && aboutFirst(digest!.watch) ? digest!.watch : computedWatch(calls);
@@ -155,7 +163,8 @@ export async function getBrief(weekParam?: string | null) {
     weeksTracked: ev.weeksTracked, th: ev.th,
     communities: sources.length,
     coverage: coverageNote({ total: cur.total, analyzed: cur.analyzed, sources, silent, weeksTracked: ev.weeksTracked, label: sourceLabel }),
-    lastRun: (runs?.[0] ?? null) as { stage: string; started_at: string; ok: boolean | null } | null,
+    lastRun: (runs?.[0] ?? null) as { stage: string; started_at: string; ok: boolean | null; error: string | null } | null,
+    threadsKnown: themeStatsFrom(digest?.stats) != null,
   };
 }
 export type Brief = Awaited<ReturnType<typeof getBrief>>;
@@ -302,5 +311,5 @@ export async function getPainPage(weekParam?: string | null) {
   const phraseRows = [...map.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 25).map(([text, g]) => ({
     text, n: g.n, unresolved: g.unresolved, severe: g.severe, topic: [...g.topics.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
   }));
-  return { week, weeks: ev.weeks, topics, themes, phrases: phraseRows, totalPain: phrases.length, th: ev.th, weeksTracked: ev.weeksTracked };
+  return { week, weeks: ev.weeks, topics, themes, phrases: phraseRows, totalPain: phrases.length, th: ev.th, weeksTracked: ev.weeksTracked, threadsKnown: themeStatsFrom(ev.digest?.stats) != null };
 }

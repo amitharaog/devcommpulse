@@ -20,5 +20,5 @@ export function isAdmin(req: Request): boolean {
 }
 
 export function unauthorized() {
-  return Response.json({ error: "Not authorised. Enter the admin passcode on Topics & sources." }, { status: 401 });
+  return Response.json({ error: "Not authorised. Send the admin passcode in the x-admin-key header." }, { status: 401 });
 }

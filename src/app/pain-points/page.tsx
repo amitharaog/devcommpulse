@@ -39,9 +39,9 @@ export default async function PainPointsPage({ searchParams }: { searchParams: P
           <Kpi label="Build-ready" value={buildReady.length} />
           <Kpi label="Tools don't solve it" value={underserved.length} tone="bad" />
         </div>
-        <HowCallsAreMade th={d.th} need={Math.max(1, Math.min(3, d.weeksTracked))} id="scoring" />
+        <HowCallsAreMade th={d.th} need={Math.max(1, Math.min(3, d.weeksTracked))} threadsKnown={d.threadsKnown} id="scoring" />
         <Card flush title="Themes"
-          action={<div className="flex rounded-md border border-line bg-paper p-0.5 text-[13px]">{seg(undefined, "All")}{seg("calls", "This week's calls")}{seg("build", "Build-ready")}{seg("underserved", "Tools don't solve it")}</div>}>
+          action={<div className="flex flex-wrap rounded-md border border-line bg-paper p-0.5 text-[13px]">{seg(undefined, "All")}{seg("calls", "This week's calls")}{seg("build", "Build-ready")}{seg("underserved", "Tools don't solve it")}</div>}>
           {shown.length ? <ThemesTable themes={shown} names={names} week={d.week} />
             : <div className="px-5 pb-5"><Empty>No themes for this week yet. They are written with the Friday brief.</Empty></div>}
         </Card>

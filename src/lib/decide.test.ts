@@ -2,8 +2,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  allowedNumbers, callsFrom, checkText, computedCalls, computedHeadline, computedWatch, evidenceFor, headlineOk,
-  signalHeld, themeMatch, threadKey, thresholds, validateCalls, verifyQuote, type Evidence,
+  allowedNumbers, callsFrom, checkText, computedCalls, computedHeadline, computedWatch, evidenceFor, headlineOk, orderCalls,
+  signalHeld, themeMatch, threadKey, thresholds, validateCalls, verifyQuote, weeksTrackedIn, type Evidence,
 } from "./decide.ts";
 import type { PainTheme } from "./types.ts";
 
@@ -95,9 +95,13 @@ test("text checks", () => {
   assert.ok(!checkText("worth $40k ARR", null));
   assert.ok(!checkText("the best tool", null));
   assert.ok(!checkText("1,200 posts", new Set([12, 1])));
-  const first = computedCalls(evs, W)[0];
-  assert.ok(headlineOk("Large AI pull requests stall reviews: 9 of 12 unresolved", first, new Set([9, 12])));
-  assert.ok(!headlineOk("Linter noise jumped 123 percent", first, new Set([123])));
+  const calls = computedCalls(evs, W);
+  assert.ok(headlineOk("Large AI pull requests stall reviews: 9 of 12 unresolved", calls, new Set([9, 12])));
+  assert.ok(!headlineOk("Linter noise jumped 123 percent", calls, new Set([123])), "not about call #1");
+  assert.ok(!checkText("Review large AI PRs 2x faster", null), "invented multiplier");
+  assert.ok(!checkText("Saves teams 5k a year", null), "money without a currency sign");
+  assert.ok(!checkText("save 3 hours a week", null), "invented time saving");
+  assert.ok(checkText("It stays at 9+ posts for 2 more weeks.", new Set([9, 2])));
 });
 
 test("stored calls are used when present, computed otherwise", () => {
@@ -129,3 +133,52 @@ test("theme identity, threads and quotes", () => {
   assert.ok(!verifyQuote("our AI reviewer leaves 40 comments per PR and maybe two are worth reading", "t", body), "paraphrase");
   assert.ok(!verifyQuote("our AI reviewer leaves forty", "t", body), "too short");
 });
+
+// ---------- regressions found in review ----------
+
+test("calls are ordered build, investigate, message, ignore, whatever order Gemini used", () => {
+  const stored = { calls_version: 1, calls_source: "gemini", calls: [
+    { theme: THEMES[3].theme, verb: "ignore", title: "Linter spike", why: "x", revisit_if: "It stays at 9+ posts for 2 more weeks." },
+    { theme: THEMES[0].theme, verb: "investigate", title: "Dependency checks in review", why: "13 posts.", next_step: "Sumit asks 3 customers." },
+    { theme: THEMES[1].theme, verb: "build", title: "Reviewer aid for large AI PRs", why: "9 of 12 unresolved.", next_step: "Engineering prototypes it." },
+  ] };
+  const r = callsFrom(stored, evs, W);
+  assert.deepEqual(r.calls.map((c) => c.verb), ["build", "investigate", "ignore"]);
+  assert.match(computedHeadline(r.calls)!, /^Strongest build case/);
+  assert.deepEqual(orderCalls(r.calls.slice().reverse(), evs).map((c) => c.verb), ["build", "investigate", "ignore"]);
+});
+
+test("a one-week spike is never strong evidence, and is never 'from 0' without last week's data", () => {
+  assert.equal(by("Static analysis").strength, "moderate");
+  assert.ok(by("Static analysis").allowed.includes("ignore"), "still ignore-able");
+  const cold = evidenceFor({ week: W, weeks: WEEKS, themes: THEMES, history: [], prevTotal: 0, th });
+  assert.ok(cold.every((e) => !e.spike), "no data for last week, so no spikes");
+  const calls = computedCalls(cold, W);
+  assert.ok(calls.every((c) => !/up from 0|Jumped from 0/.test(c.why)));
+  assert.match(calls[0].why, /only one week of history/);
+});
+
+test("the headline must not lead with the theme the page says to ignore", () => {
+  const calls = computedCalls(evs, W); // build Large AI PRs, investigate supply chain, ignore static analysis linters
+  const nums = new Set([123, 9, 12]);
+  assert.ok(!headlineOk("Static analysis discussions jumped 123 percent while PR bottlenecks rose sharply.", calls, nums));
+  assert.ok(!headlineOk("Large AI PR bottlenecks grew to 40 posts", calls, new Set([40])), "40 is not in call #1's own numbers");
+  assert.ok(headlineOk("Large AI PRs stall reviews: 9 of 12 posts still unresolved", calls, nums));
+});
+
+test("interview profiles may mention team sizes; other fields may not invent numbers", () => {
+  const nums = allowedNumbers({ rows: [{ posts: 12, last_week: 14, unresolved: 9 }] }, evs);
+  const [c] = validateCalls([{ theme: THEMES[1].theme, verb: "build", title: "Reviewer aid", why: "9 of 12 unresolved.", next_step: "Engineering prototypes it.", ask_who: "Tech leads on 20-50 engineer teams using GitHub", pitch: "Review AI PRs 2x faster" }], evs, nums, W);
+  assert.equal(c.ask_who, "Tech leads on 20-50 engineer teams using GitHub");
+  assert.equal(c.pitch, "", "a made-up multiplier never reaches the sales line");
+});
+
+test("off-product ignores aren't called spikes; weeks tracked doesn't depend on themes", () => {
+  const merge = evidenceFor({ week: W, weeks: WEEKS, themes: [theme("Merge queues stall on flaky checks", "merge-workflow", 10, 9, 4, false)], history: [], prevTotal: 228, th });
+  const calls = computedCalls(merge, W);
+  assert.equal(calls[0].verb, "ignore");
+  assert.match(computedHeadline(calls)!, /outside the product/);
+  assert.equal(weeksTrackedIn({ week: W, weeks: WEEKS, history: [], prevTotal: 228 }).filter(Boolean).length, 2);
+  assert.match(computedWatch(computedCalls(evs, W))!, /time-boxed prototype/);
+});
+

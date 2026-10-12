@@ -11,6 +11,7 @@ import { WeekPicker } from "@/components/WeekPicker";
 import { CopyButton } from "@/components/CopyButton";
 import { Badge, Card, Empty, Freshness, Page, PageHeader } from "@/components/ui";
 import { CallRow, HeldList, HowCallsAreMade, RadarList } from "@/components/Memo";
+import { HowLink } from "@/components/HowLink";
 
 export const dynamic = "force-dynamic";
 
@@ -44,13 +45,13 @@ export default async function BriefPage({ searchParams }: { searchParams: Promis
       <Page>
         <section className="grid gap-4 lg:grid-cols-12">
           <div className={b.watch ? "lg:col-span-7" : "lg:col-span-12"}>
-            <p className="line-clamp-2 max-w-[60ch] font-display text-[22px] font-bold leading-snug tracking-[-0.01em]">{b.headline}</p>
+            <p className="max-w-[60ch] font-display lg:line-clamp-2 text-[22px] font-bold leading-snug tracking-[-0.01em]">{b.headline}</p>
             <Pulse b={b} />
           </div>
           {b.watch && (
             <div className="rounded-xl bg-cobalt-soft px-4 py-3.5 lg:col-span-5">
               <div className="text-[11.5px] font-semibold uppercase tracking-wide text-cobalt">Ask in Monday&apos;s sprint planning</div>
-              <p className="mt-1 line-clamp-3 text-[15.5px] font-semibold leading-snug">{b.watch}</p>
+              <p className="mt-1 text-[15.5px] lg:line-clamp-3 font-semibold leading-snug">{b.watch}</p>
               {b.decision && <p className="mt-1 text-[13px] text-muted">Gemini leans {b.decision.lean}: {b.decision.because}</p>}
             </div>
           )}
@@ -59,7 +60,7 @@ export default async function BriefPage({ searchParams }: { searchParams: Promis
         <section aria-labelledby="calls">
           <div className="mb-2 flex items-baseline gap-3">
             <h2 id="calls" className="text-[13px] font-semibold uppercase tracking-wide text-muted">Calls for this week</h2>
-            <a href="#how" className="ml-auto text-[13px] text-cobalt hover:underline">How calls are made ↓</a>
+            <HowLink />
           </div>
           {!b.hasThemes ? (
             <Empty>
@@ -101,7 +102,7 @@ export default async function BriefPage({ searchParams }: { searchParams: Promis
 
         <footer className="space-y-3 border-t border-line pt-4">
           <p className="text-[13px] leading-relaxed text-muted">{b.coverage}</p>
-          <HowCallsAreMade th={b.th} need={need} />
+          <HowCallsAreMade th={b.th} need={need} threadsKnown={b.threadsKnown} />
           <nav className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]" aria-label="More detail">
             <Link href={`/topics?week=${b.week}`} className="text-cobalt hover:underline">Topics &amp; trends →</Link>
             <Link href={`/pain-points?week=${b.week}`} className="text-cobalt hover:underline">Pain themes →</Link>

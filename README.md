@@ -48,8 +48,8 @@ npm run dev
 To trigger the crons locally: `curl -H "Authorization: Bearer $CRON_SECRET" localhost:3000/api/cron/weekly`
 
 ## Customising
-- **Topics and keywords:** use the dashboard's **Topics & sources** page. Saving re-tags already-collected posts from the last 60 days.
-- **Communities:** turn each one on or off, and edit subreddits, DEV tags or Stack Exchange sites as JSON on the same page.
+- **Topics, keywords and communities** are rows in Supabase (`topics`, `sources`); the dashboard shows them read-only under Settings. Edit them in Supabase, or `POST` to `/api/admin/topics` / `/api/admin/sources` with the `x-admin-key: <ADMIN_PASSCODE>` header (saving a topic re-tags posts from the last 60 days).
+- **Shipped work:** add entries to `src/lib/shipped.ts` and they appear next to "Last week's calls".
 - **Brief time:** change `vercel.json`. Times are in UTC; `30 0 * * 5` is Friday 06:00 IST.
 - **Delivery:** set `SLACK_WEBHOOK_URL`, and/or `RESEND_API_KEY` + `DIGEST_EMAIL_TO` + `DIGEST_EMAIL_FROM`.
 

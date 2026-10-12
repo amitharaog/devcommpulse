@@ -58,7 +58,7 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
-          <Card className="lg:col-span-2" title="What moved this week" action={<Badge tone={o.digest ? "cobalt" : "neutral"}>{o.digest ? "Written by Gemini" : "Computed from counts"}</Badge>}>
+          <Card className="lg:col-span-2" title="What moved this week" action={<Badge tone={o.digest?.bullets?.length ? "cobalt" : "neutral"}>{o.digest?.bullets?.length ? "From the Friday brief" : "Computed from counts"}</Badge>}>
             <p className="max-w-[60ch] text-[17px] font-semibold leading-snug">{headline}</p>
             <ul className="mt-3 space-y-2 text-[14.5px] leading-relaxed">
               {bullets.map((b, i) => <li key={i} className="flex gap-3"><span aria-hidden className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-muted" />{b}</li>)}

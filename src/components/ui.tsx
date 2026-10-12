@@ -30,12 +30,12 @@ export function Card({ title, subtitle, action, children, className = "", flush 
   return (
     <section className={`card flex flex-col ${className}`}>
       {(title || action) && (
-        <div className="flex items-start gap-3 px-5 pb-3 pt-4">
+        <div className="flex flex-wrap items-start gap-3 px-5 pb-3 pt-4">
           <div className="min-w-0">
             {title && <h2 className="text-[15px] font-semibold">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-[13px] text-muted">{subtitle}</p>}
           </div>
-          {action && <div className="ml-auto shrink-0 text-[13px]">{action}</div>}
+          {action && <div className="ml-auto min-w-0 max-w-full text-[13px]">{action}</div>}
         </div>
       )}
       <div className={flush ? "min-w-0 flex-1" : "min-w-0 flex-1 px-5 pb-5"}>{children}</div>
