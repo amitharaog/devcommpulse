@@ -20,7 +20,7 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
     <>
       <PageHeader
         title="Topics"
-        subtitle={<>{o.topics.length} monitored topic categories, week of {weekLabel(o.week)}. Edit them in Settings.</>}
+        subtitle={<>{o.topics.length} monitored topic categories, week of {weekLabel(o.week)}. Keywords are listed in Settings.</>}
         actions={<Suspense><WeekPicker week={o.week} options={weekOptions()} labels={weekLabels()} /></Suspense>}
       />
       <Page>

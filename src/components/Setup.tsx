@@ -14,13 +14,13 @@ export function Setup({ reason, detail, lastRun }: { reason: Reason; detail?: st
     },
     topics: {
       title: "Add a topic to monitor",
-      body: <>There are no active topics. Add one in <Link className="text-cobalt underline" href="/settings">Topics &amp; sources</Link>.</>,
+      body: <>There are no active topics. Add one in the <code>topics</code> table in Supabase.</>,
     },
     data: {
       title: "Collect the first batch of posts",
       body: <>
-        Go to <Link className="text-cobalt underline" href="/settings">Topics &amp; sources</Link>, enter the admin passcode and choose <strong>Run full pipeline</strong>.
-        The first run backfills three weeks so week-over-week comparisons work straight away. After that it runs by itself daily, with the brief every Friday morning.
+        Posts are collected and analysed automatically every night. The first run backfills three weeks so week-over-week comparisons work straight away,
+        and the brief is written every Friday morning. To load it now, open <Link className="text-cobalt underline" href="/settings">Settings</Link> and press <strong>Check for new data</strong>.
         {lastRun && <span className="mt-2 block text-sm text-muted">Last run: {lastRun.stage} {lastRun.ok === false ? `failed: ${lastRun.error}` : "finished"}.</span>}
       </>,
     },
