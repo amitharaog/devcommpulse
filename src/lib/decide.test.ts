@@ -182,3 +182,8 @@ test("off-product ignores aren't called spikes; weeks tracked doesn't depend on 
   assert.match(computedWatch(computedCalls(evs, W))!, /time-boxed prototype/);
 });
 
+test("a repeated on-page label is removed from Gemini's text", () => {
+  const [c] = validateCalls([{ theme: THEMES[3].theme, verb: "ignore", title: "Linter noise", why: "9 posts.", revisit_if: "Revisit if posts exceed 12 in a single week." }], evs, new Set([9, 12]), W);
+  assert.equal(c.revisit_if, "Posts exceed 12 in a single week.");
+});
+

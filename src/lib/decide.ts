@@ -343,8 +343,12 @@ export function validateCalls(raw: unknown, evs: Evidence[], allowed: Set<number
 
     const t = templateCall(e, verb, week);
     const ok = (s: string) => !!s && checkText(s, allowed);
+    // Gemini sometimes repeats the on-page label ("Revisit if: Revisit if posts…"); drop it and re-capitalise.
+    const LABEL: Partial<Record<keyof Call, RegExp>> = { revisit_if: /^revisit(?: it)?(?: if| when)?\s*[:,-]?\s*/i, next_step: /^next(?: step)?\s*:\s*/i, pitch: /^say\s*:\s*/i, metric: /^measure\s*:\s*/i };
     const pick = (key: keyof Call, max: number, fallback: string) => {
-      const s = clip(r[key], max);
+      let s = clip(r[key], max);
+      const label = LABEL[key];
+      if (label && label.test(s)) { s = s.replace(label, ""); s = s.charAt(0).toUpperCase() + s.slice(1); }
       return ok(s) ? s : fallback;
     };
     const keep = (key: keyof Call) => FIELDS[verb].includes(key);
