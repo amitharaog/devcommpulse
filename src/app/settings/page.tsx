@@ -22,7 +22,7 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" subtitle="What the dashboard monitors and how its data is refreshed." />
+      <PageHeader title="Settings" />
       <Page>
         <SettingsClient
           topics={topics}

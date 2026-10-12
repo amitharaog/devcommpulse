@@ -20,14 +20,14 @@ export default async function TopicsPage({ searchParams }: { searchParams: Promi
     <>
       <PageHeader
         title="Topics"
-        subtitle={<>{o.topics.length} monitored topic categories, week of {weekLabel(o.week)}. Keywords are listed in Settings.</>}
+        subtitle={<>Week of {weekLabel(o.week)}</>}
         actions={<Suspense><WeekPicker week={o.week} options={weekOptions()} labels={weekLabels()} /></Suspense>}
       />
       <Page>
-        <Card flush title="All topics" subtitle="Click a column to sort, or a topic for charts, keywords, posts and a deep dive.">
+        <Card flush title="All topics">
           <TopicsTable rows={rows} week={o.week} />
         </Card>
-        <Card title="Eight-week heatmap" subtitle="Posts per topic per week. Spot what's heating up at a glance.">
+        <Card title="Eight-week heatmap">
           <Heatmap rows={rows.map((r) => ({ slug: r.slug, name: r.name, values: r.series }))} weeks={o.weeks} week={o.week} />
         </Card>
       </Page>

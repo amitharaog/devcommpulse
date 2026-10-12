@@ -56,16 +56,10 @@ export function Sidebar() {
     </Link>
   );
   return (
-    <aside className="sticky top-0 hidden h-screen w-[232px] shrink-0 flex-col bg-side px-3 py-5 lg:flex">
+    <aside className="sticky top-0 hidden print:!hidden h-screen w-[232px] shrink-0 flex-col bg-side px-3 py-5 lg:flex">
       <Link href={href("/")} className="mb-7 px-3"><Logo light /></Link>
       <nav className="flex flex-col gap-1" aria-label="Main">{NAV.map(item)}</nav>
-      <div className="mt-auto flex flex-col gap-4">
-        <div className="rounded-lg bg-side-2/70 px-3 py-3 text-[12.5px] leading-relaxed text-[#b9c2d6]">
-          <div className="mb-1 font-medium text-white">Schedule</div>
-          Collection runs nightly. The brief is written every Friday at 06:00 IST.
-        </div>
-        <nav aria-label="Admin">{item(SETTINGS)}</nav>
-      </div>
+      <nav className="mt-auto" aria-label="Admin">{item(SETTINGS)}</nav>
     </aside>
   );
 }
@@ -73,7 +67,7 @@ export function Sidebar() {
 export function MobileNav() {
   const { href, active } = useNav();
   return (
-    <div className="sticky top-0 z-20 bg-side lg:hidden">
+    <div className="sticky top-0 z-20 bg-side lg:hidden print:hidden">
       <div className="px-4 pt-3"><Logo light /></div>
       <nav className="flex gap-1 overflow-x-auto px-2 py-2" aria-label="Main">
         {[...NAV, SETTINGS].map((n) => (

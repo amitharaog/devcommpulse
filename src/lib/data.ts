@@ -3,6 +3,7 @@ import { db, fetchAll } from "./supabase";
 import { getTopics } from "./config";
 import { addWeeks, currentWeek, isWeek, lastCompleteWeek } from "./week";
 import { summarize, delta, pct, type TopicSummary } from "./stats";
+import { prioritize, ratingsFrom } from "./priority";
 import type { Digest, PainTheme, PostRow, Topic, TopicWeekStat } from "./types";
 
 export type WeekTotals = { total: number; analyzed: number; negative: number; pain: number; unresolved: number };
@@ -60,6 +61,7 @@ export async function getOverview(weekParam?: string | null) {
     pain: Number(src.find((x) => x.source === s && x.week_start === week)?.pain ?? 0),
   })).sort((a, b) => b.mentions - a.mentions);
 
+  const digest = (digestRes.data ?? null) as Digest | null;
   return {
     week, prevWeek, weeks, isCurrent: week === currentWeek(),
     topics: active,
@@ -73,8 +75,8 @@ export async function getOverview(weekParam?: string | null) {
       painPct: pct(cur.pain, cur.analyzed),
       prevNegativePct: pct(prev.negative, prev.analyzed),
     },
-    digest: (digestRes.data ?? null) as Digest | null,
-    themes: (themeRes.data ?? []) as PainTheme[],
+    digest,
+    themes: prioritize((themeRes.data ?? []) as PainTheme[], ratingsFrom(digest?.stats)),
     sources,
     kpiSeries,
     lastRun: runRes.data?.[0] ?? null,
@@ -200,15 +202,16 @@ export async function getPainPage(weekParam?: string | null) {
   const week = await resolveWeek(weekParam);
   const since = addWeeks(week, -7);
   const weeks = Array.from({ length: 8 }, (_, i) => addWeeks(since, i));
-  const [topics, { data: themeRows }, phrases] = await Promise.all([
+  const [topics, { data: themeRows }, { data: digestRow }, phrases] = await Promise.all([
     getTopics(),
     db().from("pain_themes").select("*").gte("week_start", since).lte("week_start", week),
+    db().from("digests").select("stats").eq("week_start", week).maybeSingle(),
     fetchAll<{ pain_point: string; topic_slugs: string[]; unresolved: boolean | null; severity: number | null }>((from, to) =>
       db().from("posts").select("pain_point, topic_slugs, unresolved, severity").eq("week_start", week).eq("is_pain", true)
         .not("pain_point", "is", null).or("relevant.is.null,relevant.eq.true").range(from, to)),
   ]);
   const all = (themeRows ?? []) as PainTheme[];
-  const current = all.filter((t) => t.week_start === week).sort((a, b) => b.mentions - a.mentions).map((t) => ({
+  const current = prioritize(all.filter((t) => t.week_start === week), ratingsFrom(digestRow?.stats)).map((t) => ({
     ...t,
     history: weeks.map((w) => {
       const h = all.find((x) => x.week_start === w && x.theme.toLowerCase() === t.theme.toLowerCase());

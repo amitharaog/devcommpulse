@@ -38,3 +38,12 @@ a { text-underline-offset: 3px; }
 @keyframes reveal { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .reveal { animation: reveal 500ms cubic-bezier(.2,.7,.2,1) both; }
 @media (prefers-reduced-motion: reduce) { .reveal { animation: none; } }
+
+/* Printing / "Save as PDF": full-width content, tables shrink to the page instead of being clipped. */
+@media print {
+  html { background: #fff; }
+  .card, .panel { box-shadow: none; break-inside: avoid; }
+  .overflow-x-auto { overflow: visible; }
+  .tbl { min-width: 0 !important; font-size: 12px; }
+  .tbl th, .tbl td { padding: 6px 8px; }
+}

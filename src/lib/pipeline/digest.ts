@@ -6,6 +6,7 @@ import { addWeeks, lastCompleteWeek, weekLabel } from "../week";
 import { summarize, pct, delta } from "../stats";
 import { slugify } from "../match";
 import { deliverBrief } from "../notify";
+import { isRelevance, type ThemeRating } from "../priority";
 import type { TopicWeekStat } from "../types";
 
 const SYSTEM = `You write a weekly product-intelligence brief for Sumit, the only PM at a 15-person startup selling a code review automation tool to mid-size engineering teams.
@@ -16,7 +17,7 @@ type PainRow = {
   sentiment: number | null; score: number; comments: number;
 };
 
-type ThemeOut = { name: string; topic: string; posts: number[]; summary: string; underserved: boolean };
+type ThemeOut = { name: string; topic: string; posts: number[]; summary: string; underserved: boolean; relevance: string; why: string };
 
 export async function digest(opts: { week?: string; notify?: boolean } = {}) {
   const week = opts.week ?? lastCompleteWeek();
@@ -60,6 +61,7 @@ export async function digest(opts: { week?: string; notify?: boolean } = {}) {
   const topTopic = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "-";
 
   const { data: priorThemes } = await db().from("pain_themes").select("theme").eq("week_start", prevWeek);
+  let ratings: ThemeRating[] = [];
   let themes: { theme: string; topic_slug: string | null; mentions: number; prev_mentions: number; unresolved: number; avg_sentiment: number | null; underserved: boolean; summary: string; example_ids: string[] }[] = [];
 
   if (phrases.length >= 2) {
@@ -73,7 +75,9 @@ Rules:
 - posts: every phrase index that belongs to the theme (each index in at most one theme; leave out one-off noise)
 - summary: one sentence on what developers are struggling with
 - underserved: true when people say existing tools don't solve it or it keeps going unresolved
-Return {"themes":[{"name":"","topic":"","posts":[0],"summary":"","underserved":false}]}
+- relevance: how directly Sumit's code review automation product could address it: "high" (core to automated code review), "medium" (adjacent, e.g. CI or review process), "low" (outside the product)
+- why: one sentence, max 18 words, on why it matters (or not) for Sumit's product
+Return {"themes":[{"name":"","topic":"","posts":[0],"summary":"","underserved":false,"relevance":"medium","why":""}]}
 
 ${lines}`,
       { system: SYSTEM, maxOutputTokens: 8192 },
@@ -101,6 +105,11 @@ ${lines}`,
 
     const seen = new Set<string>();
     themes = themes.filter((t) => (seen.has(t.theme.toLowerCase()) ? false : (seen.add(t.theme.toLowerCase()), true)));
+    const kept = new Set(themes.map((t) => t.theme.toLowerCase()));
+    ratings = (out.themes ?? []).flatMap((t) => {
+      const theme = String(t.name).trim().slice(0, 120);
+      return kept.has(theme.toLowerCase()) && isRelevance(t.relevance) ? [{ theme, relevance: t.relevance, why: String(t.why ?? "").slice(0, 200) }] : [];
+    });
     await db().from("pain_themes").delete().eq("week_start", week);
     if (themes.length) {
       const { error: e } = await db().from("pain_themes").insert(themes.map((t) => ({ ...t, week_start: week })));
@@ -174,7 +183,7 @@ Return {"headline":"","bullets":[],"watch":"","new_keywords":[],"new_topic":null
     total: totalCur, prev_total: totalPrev, change_pct: delta(totalCur, totalPrev),
     negative_pct: t0 ? pct(Number(t0.negative), Number(t0.analyzed)) : null,
     unresolved_pct: t0 ? pct(Number(t0.unresolved), Number(t0.analyzed)) : null,
-    model: currentModel(), changes,
+    model: currentModel(), changes, priorities: ratings,
   };
   const { error: de } = await db().from("digests").upsert({ week_start: week, headline, bullets, watch: brief.watch ?? null, stats, generated_at: new Date().toISOString() });
   if (de) throw new Error(de.message);

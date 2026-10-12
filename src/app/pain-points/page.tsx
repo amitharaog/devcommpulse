@@ -17,8 +17,8 @@ export default async function PainPointsPage({ searchParams }: { searchParams: P
   const d = await getPainPage(week);
   const names = Object.fromEntries(d.topics.map((t) => [t.slug, t.name]));
   const underserved = d.themes.filter((t) => t.underserved);
-  const shown = filter === "underserved" ? underserved : d.themes;
-  const rising = d.themes.filter((t) => t.prev_mentions > 0 && t.mentions > t.prev_mentions).length + d.themes.filter((t) => t.prev_mentions === 0 && t.mentions > 0).length;
+  const high = d.themes.filter((t) => t.priority.tier === "High");
+  const shown = filter === "underserved" ? underserved : filter === "high" ? high : d.themes;
   const seg = (key: string | undefined, label: string) => (
     <Link href={`/pain-points?week=${d.week}${key ? `&filter=${key}` : ""}`}
       className={`rounded px-2.5 py-1 ${filter === key || (!filter && !key) ? "bg-surface font-medium shadow-sm" : "text-muted"}`}>{label}</Link>
@@ -27,22 +27,22 @@ export default async function PainPointsPage({ searchParams }: { searchParams: P
     <>
       <PageHeader
         title="Pain points"
-        subtitle={<>What developers struggled with in the week of {weekLabel(d.week)}, grouped into themes</>}
+        subtitle={<>Week of {weekLabel(d.week)}, ranked by priority for Sumit</>}
         actions={<Suspense><WeekPicker week={d.week} options={weekOptions()} labels={weekLabels()} /></Suspense>}
       />
       <Page>
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-          <Kpi label="Posts describing a pain point" value={d.totalPain} />
-          <Kpi label="Recurring themes" value={d.themes.length} />
-          <Kpi label="Themes growing" value={rising} tone="bad" foot={<span>more posts than last week</span>} />
-          <Kpi label="Underserved themes" value={underserved.length} tone="bad" foot={<span>existing tools don&apos;t solve them</span>} />
+          <Kpi label="Pain point posts" value={d.totalPain} />
+          <Kpi label="Themes" value={d.themes.length} />
+          <Kpi label="High priority" value={high.length} tone="bad" />
+          <Kpi label="Underserved" value={underserved.length} tone="bad" />
         </div>
-        <Card flush title="Themes" subtitle="Underserved means developers say current tools don't fix it, or it keeps going unresolved."
-          action={<div className="flex rounded-md border border-line bg-paper p-0.5 text-[13px]">{seg(undefined, "All")}{seg("underserved", "Underserved")}</div>}>
+        <Card flush title="Themes"
+          action={<div className="flex rounded-md border border-line bg-paper p-0.5 text-[13px]">{seg(undefined, "All")}{seg("high", "High priority")}{seg("underserved", "Underserved")}</div>}>
           {shown.length ? <ThemesTable themes={shown} names={names} week={d.week} history />
             : <div className="px-5 pb-5"><Empty>No themes for this week yet. They are written with the Friday brief.</Empty></div>}
         </Card>
-        <Card flush title="In developers' words" subtitle="Most frequent pain points as summarised per post, before grouping">
+        <Card flush title="In developers' words">
           {d.phrases.length ? (
             <div className="overflow-x-auto">
               <table className="tbl w-full min-w-[640px] text-[14px]">

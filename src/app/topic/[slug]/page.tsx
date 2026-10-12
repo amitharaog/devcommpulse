@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { isConfigured } from "@/lib/supabase";
 import { getTopicDetail, weekOptions } from "@/lib/data";
-import { weekLabel } from "@/lib/week";
 import { weekLabels } from "@/lib/view";
 import { sourceLabel } from "@/lib/labels";
 import { Delta } from "@/components/bits";
@@ -56,19 +55,19 @@ export default async function TopicPage({ params, searchParams }: { params: Prom
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
           <Kpi label="Posts this week" value={d.stats.mentions} spark={k.map((x) => x.mentions)}
             delta={<Delta pct={d.stats.deltaPct} prev={d.stats.prev} cur={d.stats.mentions} />} foot={<span>vs {d.stats.prev} last week</span>} />
-          <Kpi label="Describe a pain point" value={d.stats.painPct ?? "—"} unit={d.stats.painPct === null ? undefined : "%"} tone="bad" />
-          <Kpi label="Negative in tone" value={d.stats.negativePct ?? "—"} unit={d.stats.negativePct === null ? undefined : "%"} tone="bad" spark={k.map((x) => x.negativePct ?? 0)} />
-          <Kpi label="Still unresolved" value={d.stats.unresolvedPct ?? "—"} unit={d.stats.unresolvedPct === null ? undefined : "%"} tone="bad"
+          <Kpi label="Pain points" value={d.stats.painPct ?? "—"} unit={d.stats.painPct === null ? undefined : "%"} tone="bad" />
+          <Kpi label="Negative tone" value={d.stats.negativePct ?? "—"} unit={d.stats.negativePct === null ? undefined : "%"} tone="bad" spark={k.map((x) => x.negativePct ?? 0)} />
+          <Kpi label="Unresolved" value={d.stats.unresolvedPct ?? "—"} unit={d.stats.unresolvedPct === null ? undefined : "%"} tone="bad"
             spark={k.map((x) => x.unresolved)} foot={<span>{d.stats.analyzed} analysed by AI</span>} />
         </div>
 
         {tab === "overview" && (
           <>
             <div className="grid gap-4 lg:grid-cols-3">
-              <Card className="lg:col-span-2" title="Eight-week trend" subtitle="Posts, unresolved posts and average mood (−1 to +1)">
+              <Card className="lg:col-span-2" title="Eight-week trend">
                 <TopicTrend data={d.series} />
               </Card>
-              <Card title="Where it's discussed" subtitle="This week's posts by community">
+              <Card title="Where it's discussed">
                 {d.sources.length ? (
                   <>
                     <Donut data={d.sources.map((s) => ({ name: sourceLabel(s.source), value: s.mentions }))} />
@@ -85,7 +84,7 @@ export default async function TopicPage({ params, searchParams }: { params: Prom
               </Card>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
-              <Card title="Pain point themes" subtitle="Grouped by the weekly brief" action={<Link href={`/pain-points?week=${d.week}`} className="text-cobalt hover:underline">All pain points</Link>}>
+              <Card title="Pain point themes" action={<Link href={`/pain-points?week=${d.week}`} className="text-cobalt hover:underline">All pain points</Link>}>
                 {d.themes.length ? (
                   <ul className="divide-y divide-line">
                     {d.themes.map((t) => (
@@ -100,7 +99,7 @@ export default async function TopicPage({ params, searchParams }: { params: Prom
                   </ul>
                 ) : <Empty>No themes yet. They are written with the Friday brief.</Empty>}
               </Card>
-              <Card title="In their words" subtitle="Most frequent pain points this week">
+              <Card title="In their words">
                 {d.topPainPoints.length ? (
                   <ul className="space-y-2.5">
                     {d.topPainPoints.map((p) => {
@@ -121,7 +120,7 @@ export default async function TopicPage({ params, searchParams }: { params: Prom
 
         {tab === "keywords" && (
           <div className="grid gap-4 lg:grid-cols-5">
-            <Card flush className="lg:col-span-3" title="Keyword performance" subtitle="Exact matches this week vs last. Select a keyword to filter every tab.">
+            <Card flush className="lg:col-span-3" title="Keyword performance">
               <div className="overflow-x-auto">
                 <table className="tbl w-full min-w-[480px] text-[14px]">
                   <thead><tr><th>Keyword</th><th className="text-right">This week</th><th className="text-right">Last week</th><th>Change</th><th /></tr></thead>
@@ -143,14 +142,14 @@ export default async function TopicPage({ params, searchParams }: { params: Prom
                 </table>
               </div>
             </Card>
-            <Card className="lg:col-span-2" title="Top keywords" subtitle="This week vs last">
+            <Card className="lg:col-span-2" title="Top keywords">
               {d.keywords.some((x) => x.mentions || x.prev) ? <KeywordBars data={d.keywords.filter((x) => x.mentions || x.prev).slice(0, 8)} /> : <Empty>No keyword matches this week.</Empty>}
             </Card>
           </div>
         )}
 
         {tab === "posts" && (
-          <Card flush title="Posts" subtitle={`Every post matched to this topic in the week of ${weekLabel(d.week)}${d.posts.length < d.stats.mentions ? ` (showing the top ${d.posts.length})` : ""}`}>
+          <Card flush title="Posts" subtitle={d.posts.length < d.stats.mentions ? `Showing the top ${d.posts.length} of ${d.stats.mentions}` : undefined}>
             <PostsTable posts={d.posts} />
           </Card>
         )}
@@ -160,7 +159,7 @@ export default async function TopicPage({ params, searchParams }: { params: Prom
             <div className="card p-5 lg:col-span-2">
               <DeepDive topic={slug} week={d.week} keyword={d.keyword} initial={(d.deepDive as Dive | null) ?? null} />
             </div>
-            <Card title={`Ask about ${d.topic.name.toLowerCase()}`} subtitle="Answers come from this topic's posts for the selected week.">
+            <Card title={`Ask about ${d.topic.name.toLowerCase()}`}>
               <AskBox week={d.week} topic={slug} suggestions={["What do people blame for this?", "Which tools are named and why?", "Is anything getting better?"]} />
             </Card>
           </div>

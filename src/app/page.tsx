@@ -9,9 +9,8 @@ import { Donut, TrendLines, SERIES } from "@/components/Charts";
 import { WeekPicker } from "@/components/WeekPicker";
 import { Setup } from "@/components/Setup";
 import { Card, Kpi, Page, PageHeader, Badge, Empty, Freshness } from "@/components/ui";
-import { ThemesTable } from "@/components/ThemesTable";
-import { TopicsTable } from "@/components/TopicsTable";
-import { topicRows, weekLabels } from "@/lib/view";
+import { PriorityList } from "@/components/PriorityList";
+import { weekLabels } from "@/lib/view";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +42,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
     <>
       <PageHeader
         title="Overview"
-        subtitle={<>Week of {weekLabel(o.week)}{o.isCurrent ? " (in progress)" : ""}, compared with {weekLabel(o.prevWeek)}</>}
+        subtitle={<>Week of {weekLabel(o.week)}{o.isCurrent ? " (in progress)" : ""}</>}
         actions={<>
           <Freshness iso={o.digest?.generated_at ?? o.lastRun?.started_at} label={o.digest ? "Brief written" : "Data updated"} />
           <Suspense><WeekPicker week={o.week} options={weekOptions()} labels={weekLabels()} /></Suspense>
@@ -51,14 +50,14 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
       />
       <Page>
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-          <Kpi label="Posts in our problem space" value={o.totals.total} spark={k.map((x) => x.total)}
-            delta={<Delta pct={o.totals.deltaPct} prev={o.totals.prev} cur={o.totals.total} />} foot={<span>vs {o.totals.prev} last week</span>} />
-          <Kpi label="Describe a pain point" value={o.totals.painPct ?? "—"} unit={o.totals.painPct === null ? undefined : "%"} tone="bad"
+          <Kpi label="Posts this week" value={o.totals.total} spark={k.map((x) => x.total)}
+            delta={<Delta pct={o.totals.deltaPct} prev={o.totals.prev} cur={o.totals.total} />} foot={<span>vs {o.totals.prev}</span>} />
+          <Kpi label="Pain points" value={o.totals.painPct ?? "—"} unit={o.totals.painPct === null ? undefined : "%"} tone="bad"
             spark={k.map((x) => pctOf(x.pain, x.analyzed))} foot={<span>{o.totals.pain} posts</span>} />
-          <Kpi label="Negative in tone" value={o.totals.negativePct ?? "—"} unit={o.totals.negativePct === null ? undefined : "%"} tone="bad"
+          <Kpi label="Negative tone" value={o.totals.negativePct ?? "—"} unit={o.totals.negativePct === null ? undefined : "%"} tone="bad"
             spark={k.map((x) => pctOf(x.negative, x.analyzed))} foot={o.totals.prevNegativePct !== null ? <span>{o.totals.prevNegativePct}% last week</span> : undefined} />
-          <Kpi label="Still unresolved" value={o.totals.unresolvedPct ?? "—"} unit={o.totals.unresolvedPct === null ? undefined : "%"} tone="bad"
-            spark={k.map((x) => pctOf(x.unresolved, x.analyzed))} foot={<span>{o.totals.unresolved} posts with no fix in sight</span>} />
+          <Kpi label="Unresolved" value={o.totals.unresolvedPct ?? "—"} unit={o.totals.unresolvedPct === null ? undefined : "%"} tone="bad"
+            spark={k.map((x) => pctOf(x.unresolved, x.analyzed))} foot={<span>{o.totals.unresolved} posts</span>} />
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
@@ -72,10 +71,10 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
                 <span className="font-semibold">For Monday&apos;s sprint planning: </span>{o.digest.watch}
               </div>
             )}
-            {!o.digest && <p className="mt-4 text-[13px] text-muted">The AI brief for this week isn&apos;t written yet. It runs Friday morning, or <Link href="/settings" className="text-cobalt underline">run it now</Link>.</p>}
+            {!o.digest && <p className="mt-4 text-[13px] text-muted">The AI brief for this week is written on Friday morning.</p>}
           </Card>
 
-          <Card title="Biggest movers" subtitle="Change in posts vs last week">
+          <Card title="Biggest movers">
             <h3 className="mb-2 text-[12.5px] font-medium text-muted">Rising</h3>
             {rising.length ? (
               <ul className="space-y-2">
@@ -103,11 +102,16 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
           </Card>
         </div>
 
+        <Card flush title="Priorities for Sumit" action={<Link href={`/pain-points?week=${o.week}`} className="text-cobalt hover:underline">All pain points</Link>}>
+          {o.themes.length ? <PriorityList items={o.themes.slice(0, 8)} names={names} week={o.week} />
+            : <div className="px-5 pb-5"><Empty>Priorities appear once the weekly brief has run for this week.</Empty></div>}
+        </Card>
+
         <div className="grid gap-4 lg:grid-cols-3">
-          <Card className="lg:col-span-2" title="Posts per week" subtitle="Five busiest topics over eight weeks" action={<Link href={`/topics?week=${o.week}`} className="text-cobalt hover:underline">All topics</Link>}>
+          <Card className="lg:col-span-2" title="Posts per week" action={<Link href={`/topics?week=${o.week}`} className="text-cobalt hover:underline">All topics</Link>}>
             <TrendLines data={trend} keys={top5} names={names} />
           </Card>
-          <Card title="Where it's discussed" subtitle="Share of this week's posts" action={<Link href={`/sources?week=${o.week}`} className="text-cobalt hover:underline">Sources</Link>}>
+          <Card title="Where it's discussed" action={<Link href={`/sources?week=${o.week}`} className="text-cobalt hover:underline">Sources</Link>}>
             {o.sources.some((s) => s.mentions) ? (
               <>
                 <Donut data={o.sources.filter((s) => s.mentions).map((s) => ({ name: sourceLabel(s.source), value: s.mentions }))} />
@@ -126,21 +130,6 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
           </Card>
         </div>
 
-        <Card flush title="Top pain points" subtitle="Similar complaints grouped into themes by Gemini" action={<Link href={`/pain-points?week=${o.week}`} className="text-cobalt hover:underline">View all {o.themes.length}</Link>}>
-          {o.themes.length ? <ThemesTable themes={o.themes.slice(0, 6)} names={names} week={o.week} />
-            : <div className="px-5 pb-5"><Empty>Themes appear once the weekly brief has run for this week.</Empty></div>}
-        </Card>
-
-        <Card flush title="Topics at a glance" subtitle="Bar shows this week; the tick marks last week. Click a column to sort." action={<Link href={`/topics?week=${o.week}`} className="text-cobalt hover:underline">Open topics</Link>}>
-          <TopicsTable rows={topicRows(o)} week={o.week} compact />
-        </Card>
-
-        {(o.pending > 0 || o.changes.length > 0) && (
-          <p className="text-[13px] text-muted">
-            {o.pending > 0 && <>{o.pending} posts are waiting for AI analysis. </>}
-            {o.changes.length > 0 && <>Recently added by AI: {o.changes.slice(0, 4).map((c) => `“${c.keyword}”`).join(", ")}. <Link href="/settings" className="text-cobalt underline">Review</Link></>}
-          </p>
-        )}
       </Page>
     </>
   );

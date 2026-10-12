@@ -50,7 +50,7 @@ flowchart LR
   UI --> P & PT & D & T
   UI --> DD <--> GEM
   DD --> DDC
-  UI -- "edit topics/sources, run now" --> T & S
+  UI -- "check for new data (rate-limited)" --> COL
 ```
 
 ## What each part does
@@ -63,7 +63,8 @@ flowchart LR
 | Analyze | `src/lib/pipeline/analyze.ts` | Sends posts to Gemini Flash in batches of 25. It gets back relevance, topic, sentiment (−1 to +1), a short pain-point phrase, whether the problem is unresolved, and a severity score. An accepted Stack Exchange answer overrides "unresolved". |
 | Digest | `src/lib/pipeline/digest.ts` | Computes week-over-week counts in SQL. Gemini groups the pain-point phrases into themes, with exact counts for this week and last. Gemini then writes the headline, 3–5 bullets and a sprint-planning question, and proposes new keywords or topics. Those are validated, written to `topics`, logged to `keyword_changes`, and used to re-tag older posts. |
 | Delivery | `src/lib/notify.ts` | Optionally posts the brief to Slack and/or emails it via Resend. |
-| Brief page | `src/app/page.tsx` | Headline, four numbers, topic table (this week vs last, 8-week sparkline, mood, % unresolved), themes, source chart, trend chart, and an Ask box. |
+| Brief page | `src/app/page.tsx` | Headline, four numbers, biggest movers, pain themes ranked by priority for Sumit, trend chart and source chart. |
+| Priority ranking | `src/lib/priority.ts` | Scores each pain theme 0–100: Gemini's relevance rating for the product (stored in `digests.stats.priorities`) × demand (volume, growth, unresolved share, negativity, underserved). |
 | Topic page | `src/app/topic/[slug]/page.tsx` | Keyword chips (`?kw=` filters everything), trend and keyword charts, themes, top pain points, posts, an on-demand deep dive, and a topic-scoped Ask box. |
 | Settings | `src/app/settings`, `src/components/SettingsClient.tsx` | Passcode-protected editing of topics, keywords, Stack Overflow tags and sources, a "Run now" control, and the log of AI-made changes. |
 | SQL | `supabase/schema.sql` | Tables, `topic_weekly_stats`, `source_weekly_stats`, `week_totals`, `apply_analysis`, `retag_keyword`, plus seed topics for Sumit's problem space. |

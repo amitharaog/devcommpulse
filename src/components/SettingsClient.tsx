@@ -13,23 +13,25 @@ export function SettingsClient(props: {
   topics: Topic[]; sources: Source[]; changes: Change[]; runs: Run[]; postCount: number; geminiModel: string;
 }) {
   const [tab, setTab] = useState<"topics" | "sources" | "pipeline" | "changes">("topics");
+  const check = useCheck();
 
   return (
     <div className="space-y-6">
-      <CheckPanel />
-
-      <div className="flex gap-1 border-b border-line" role="tablist">
-        {([["topics", `Topics (${props.topics.length})`], ["sources", "Communities"], ["pipeline", "Data refresh"], ["changes", `AI changes (${props.changes.length})`]] as const).map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
-            className={`-mb-px border-b-2 px-3 py-2.5 text-[14px] ${tab === k ? "border-cobalt font-medium" : "border-transparent text-muted hover:text-ink"}`}>{label}</button>
-        ))}
+      <div className="flex flex-wrap items-end gap-3 border-b border-line">
+        <div className="flex gap-1" role="tablist">
+          {([["topics", `Topics (${props.topics.length})`], ["sources", "Communities"], ["pipeline", "Data refresh"], ["changes", `AI changes (${props.changes.length})`]] as const).map(([k, label]) => (
+            <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+              className={`-mb-px border-b-2 px-3 py-2.5 text-[14px] ${tab === k ? "border-cobalt font-medium" : "border-transparent text-muted hover:text-ink"}`}>{label}</button>
+          ))}
+        </div>
+        <div className="mb-2 ml-auto">{check.button}</div>
       </div>
+      {check.log}
 
       {tab === "pipeline" && <RefreshPanel postCount={props.postCount} runs={props.runs} model={props.geminiModel} />}
 
       {tab === "topics" && <section>
-        <h2 className="text-[17px] font-semibold">Monitored topics</h2>
-        <p className="mb-4 text-sm text-muted">Keywords are matched as whole words in titles and text, case-insensitive, plural-tolerant. Stack Overflow tags pull every question with that tag.</p>
+        <h2 className="mb-3 text-[17px] font-semibold">Monitored topics</h2>
         <div className="space-y-3">
           {props.topics.map((t) => <TopicView key={t.slug} topic={t} />)}
         </div>
@@ -53,8 +55,7 @@ export function SettingsClient(props: {
       </section>}
 
       {tab === "sources" && <section>
-        <h2 className="text-[17px] font-semibold">Communities</h2>
-        <p className="mb-4 text-sm text-muted">Where posts are collected from, and each community&apos;s settings (subreddits, DEV tags, Stack Exchange sites).</p>
+        <h2 className="mb-3 text-[17px] font-semibold">Communities</h2>
         <div className="space-y-3">
           {props.sources.map((s) => <SourceView key={s.id} source={s} />)}
         </div>
@@ -66,7 +67,7 @@ export function SettingsClient(props: {
 type Json = Record<string, unknown>;
 
 /** Collect, analyse and rewrite the brief. The server enforces cooldowns, so this needs no passcode. */
-function CheckPanel() {
+function useCheck() {
   const router = useRouter();
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -111,19 +112,16 @@ function CheckPanel() {
     } finally { setBusy(false); }
   }
 
-  return (
-    <section className="panel p-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <button onClick={check} disabled={busy} className="rounded-md bg-cobalt px-4 py-2 text-sm font-medium text-white disabled:opacity-40">
-          {busy ? "Checking…" : "Check for new data"}
-        </button>
-        <span className="text-sm text-muted">Collects new posts, analyses them with Gemini and updates the brief. Takes a few minutes.</span>
-      </div>
-      {log.length > 0 && (
-        <pre className="mt-4 max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-ink p-4 text-[13px] leading-relaxed text-white/90">{log.join("\n")}{busy ? "\n…" : ""}</pre>
-      )}
-    </section>
-  );
+  return {
+    button: (
+      <button onClick={check} disabled={busy} className="rounded-md bg-cobalt px-4 py-2 text-sm font-medium text-white disabled:opacity-40">
+        {busy ? "Checking…" : "Check for new data"}
+      </button>
+    ),
+    log: log.length > 0 && (
+      <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-ink p-4 text-[13px] leading-relaxed text-white/90">{log.join("\n")}{busy ? "\n…" : ""}</pre>
+    ),
+  };
 }
 
 function RefreshPanel({ postCount, runs, model }: { postCount: number; runs: Run[]; model: string }) {
@@ -157,7 +155,7 @@ function TopicView({ topic }: { topic: Topic }) {
         <button onClick={() => setOpen(!open)} className="text-left">
           <span className="font-semibold">{topic.name}</span>
           {topic.origin === "ai" && <span className="ml-2 rounded bg-amber-soft px-1.5 py-0.5 text-xs text-amber">added by AI</span>}
-          <span className="ml-2 text-sm text-muted">{topic.keywords.length} keywords, {topic.tags.length} tags{!topic.active ? ", paused" : ""}</span>
+          <span className="ml-2 text-sm text-muted">{plural(topic.keywords.length, "keyword")}, {plural(topic.tags.length, "tag")}{!topic.active ? ", paused" : ""}</span>
         </button>
         <button onClick={() => setOpen(!open)} className="ml-auto text-sm text-cobalt underline">{open ? "Close" : "Details"}</button>
       </div>
@@ -191,3 +189,5 @@ function SourceView({ source }: { source: Source }) {
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="grid gap-1"><dt className="text-muted">{label}</dt><dd>{children}</dd></div>;
 }
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;

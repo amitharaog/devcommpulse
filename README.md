@@ -2,10 +2,10 @@
 
 A Friday-morning brief of what developers are struggling with around code review, CI/CD and developer workflow. It is built from public posts on Stack Overflow, Stack Exchange, Reddit, Hacker News, DEV, Lobsters and devRant.
 
-It shows which pain points come up most, whether each topic is rising or falling versus last week, and which problems look unresolved or underserved. Click any topic or keyword for charts, the underlying posts and an AI deep dive.
+It ranks this week's pain points by priority for Sumit (relevance to a code review automation product, rated by Gemini, combined with volume, growth, unresolved share and negativity), shows whether each topic is rising or falling versus last week, and flags problems that look unresolved or underserved. Click any topic or keyword for charts, the underlying posts and an AI deep dive.
 
 - **AI:** Gemini Flash only (default `gemini-3.6-flash`, automatic fallback to `gemini-2.5-flash`).
-- **Data and config:** Supabase. Topics and keywords are rows, editable from the dashboard without code changes.
+- **Data and config:** Supabase. Topics and keywords are rows in Supabase, so they change without code changes. The dashboard itself is read-only and needs no login.
 - **Hosting:** Vercel, with two cron jobs.
 
 See **[COMPONENTS.md](COMPONENTS.md)** for the components map.
@@ -30,7 +30,7 @@ Create an API key at aistudio.google.com/apikey.
 3. Deploy. The crons in `vercel.json` are registered automatically.
 
 ### 5. First run
-Open `https://<your-app>.vercel.app/settings`, enter your `ADMIN_PASSCODE` and click **Run full pipeline**.
+Open `https://<your-app>.vercel.app/settings` and click **Check for new data** (no passcode; the server limits how often it runs).
 
 The first collection backfills 21 days, so the brief has a real "vs last week" comparison straight away. Analysis runs in repeated chunks until every post is done. The brief for the last complete week is written at the end.
 

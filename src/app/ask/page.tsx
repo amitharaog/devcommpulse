@@ -19,11 +19,11 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
     <>
       <PageHeader
         title="Ask AI"
-        subtitle={<>Questions are answered by Gemini Flash from the posts collected in the week of {weekLabel(week)}, with links to sources</>}
+        subtitle={<>Answers from the week of {weekLabel(week)}, with links to sources</>}
         actions={<Suspense><WeekPicker week={week} options={weekOptions()} labels={weekLabels()} /></Suspense>}
       />
       <Page>
-        <Card title="Ask a question" subtitle="Narrow it to one topic for sharper answers.">
+        <Card title="Ask a question">
           <AskBox
             week={week}
             topics={topics.filter((t) => t.active).map((t) => ({ slug: t.slug, name: t.name }))}
